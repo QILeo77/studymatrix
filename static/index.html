@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <!-- 移动端自适应 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#10B981" />
+  <title>智学矩阵 StudyMatrix</title>
+
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- marked.js：Markdown 渲染 -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="bg-white text-gray-900 antialiased">
+
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- ===== 左侧侧边栏（桌面端显示，手机端隐藏） ===== -->
+    <aside class="sidebar hidden md:flex md:flex-col w-[260px] shrink-0 border-r border-gray-100 bg-white">
+
+      <!-- 顶部 Logo -->
+      <div class="px-5 pt-5 pb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">智</span>
+          <span class="text-lg font-bold text-emerald-500 tracking-wide">智学矩阵</span>
+        </div>
+        <p class="mt-1 text-xs text-gray-400">StudyMatrix</p>
+      </div>
+
+      <!-- 新建对话按钮 -->
+      <div class="px-4 pb-2">
+        <button class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700
+                       text-white text-sm font-medium transition-colors duration-150 flex items-center justify-center gap-2">
+          <span class="text-base leading-none">+</span> 新建对话
+        </button>
+      </div>
+
+      <!-- 功能导航区 -->
+      <nav class="px-3 py-2 space-y-0.5">
+        <p class="px-2 pt-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">功能</p>
+
+        <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
+                       hover:bg-gray-50 transition-colors" data-fill="帮我制定一份下周的复习计划">
+          <span class="text-base">📅</span> 智能复习规划
+        </button>
+
+        <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
+                       hover:bg-gray-50 transition-colors" data-fill="查询我本周的空闲时间段">
+          <span class="text-base">🕒</span> 空闲课表查询
+        </button>
+
+        <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
+                       hover:bg-gray-50 transition-colors" data-fill="给我出几道数据结构的模拟测试题">
+          <span class="text-base">📝</span> 模拟出题测试
+        </button>
+      </nav>
+
+      <!-- 底部历史对话列表 -->
+      <div class="flex-1 overflow-y-auto px-3 pt-3 pb-4 thin-scroll">
+        <p class="px-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">历史对话</p>
+        <ul class="space-y-0.5 text-[13px] text-gray-400">
+          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">高数第三章复习安排</li>
+          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">英语六级听力计划</li>
+          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">数据结构链表出题</li>
+          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">操作系统进程调度疑问</li>
+          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">下周空闲时间统计</li>
+        </ul>
+      </div>
+
+      <!-- 侧边栏底部 -->
+      <div class="border-t border-gray-100 px-5 py-3 text-xs text-gray-400 flex items-center gap-2">
+        <span class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">👤</span>
+        <span class="truncate">本地学习者</span>
+      </div>
+    </aside>
+
+    <!-- ===== 右侧主聊天区 ===== -->
+    <main class="flex-1 flex flex-col min-w-0 relative">
+
+      <!-- 顶部状态栏（含手机端菜单按钮） -->
+      <header class="shrink-0 border-b border-gray-100 bg-white/90 backdrop-blur px-4 md:px-6 h-14
+                     flex items-center gap-3 top-bar">
+        <!-- 手机端：唤出侧边栏 -->
+        <button id="menuBtn" class="md:hidden w-9 h-9 -ml-1.5 rounded-lg hover:bg-gray-50
+                       flex items-center justify-center text-gray-500" aria-label="菜单">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+
+        <span class="breathing-dot"></span>
+        <span class="text-sm font-medium text-gray-700">多 Agent 调度中心 · 待命中</span>
+      </header>
+
+      <!-- 聊天记录区 -->
+      <div id="chatContainer" class="flex-1 overflow-y-auto thin-scroll">
+        <div id="messages" class="max-w-3xl mx-auto px-4 md:px-6 py-6 space-y-6">
+
+          <!-- 欢迎语（AI 气泡示例） -->
+          <div class="flex gap-3">
+            <div class="ai-avatar">AI</div>
+            <div class="ai-bubble">
+              <p class="text-[15px] leading-7">你好！我是<strong class="text-emerald-600">智学矩阵</strong>的 AI 助手 🎓</p>
+              <p class="text-[15px] leading-7 mt-1">我可以帮你<strong>规划复习</strong>、<strong>查询空闲课表</strong>、<strong>模拟出题</strong>。点击左侧功能，或直接输入你的需求～</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 底部输入区 -->
+      <footer class="shrink-0 px-4 md:px-6 pb-4 md:pb-6 pt-2 bg-white">
+        <div class="max-w-3xl mx-auto">
+
+          <!-- 大输入框：左侧回形针 + 右侧圆形发送按钮 -->
+          <div class="input-shell">
+            <button class="attach-btn" aria-label="附件" title="上传文件（暂未开放）">
+              <!-- 回形针图标 -->
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+
+            <textarea id="chatInput" rows="1" placeholder="给智学矩阵发送消息…（Enter 发送，Shift+Enter 换行）"></textarea>
+
+            <button id="sendBtn" class="send-btn" aria-label="发送" title="发送">
+              <!-- 向上箭头 -->
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7"/>
+              </svg>
+            </button>
+          </div>
+
+          <p class="mt-2 text-center text-[11px] text-gray-300">内容由 AI 生成，仅供参考 · 智学矩阵 StudyMatrix</p>
+        </div>
+      </footer>
+
+      <!-- 手机端侧边栏遮罩 -->
+      <div id="overlay" class="overlay hidden"></div>
+
+      <!-- 手机端抽屉侧边栏 -->
+      <aside id="drawer" class="drawer">
+        <div class="flex items-center justify-between px-5 pt-5 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white font-bold text-sm">智</span>
+            <span class="text-lg font-bold text-emerald-500 tracking-wide">智学矩阵</span>
+          </div>
+          <button id="closeDrawer" class="w-9 h-9 rounded-lg hover:bg-gray-50 flex items-center justify-center text-gray-400" aria-label="关闭">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+
+        <div class="px-4 pb-2">
+          <button class="new-chat-btn w-full py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-medium
+                         flex items-center justify-center gap-2"><span class="text-base leading-none">+</span> 新建对话</button>
+        </div>
+
+        <nav class="px-3 py-2 space-y-0.5">
+          <p class="px-2 pt-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">功能</p>
+          <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
+                         hover:bg-gray-50" data-fill="帮我制定一份下周的复习计划"><span class="text-base">📅</span> 智能复习规划</button>
+          <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
+                         hover:bg-gray-50" data-fill="查询我本周的空闲时间段"><span class="text-base">🕒</span> 空闲课表查询</button>
+          <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
+                         hover:bg-gray-50" data-fill="给我出几道数据结构的模拟测试题"><span class="text-base">📝</span> 模拟出题测试</button>
+        </nav>
+
+        <div class="flex-1 overflow-y-auto px-3 pt-3 pb-4 thin-scroll">
+          <p class="px-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">历史对话</p>
+          <ul class="space-y-0.5 text-[13px] text-gray-400">
+            <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">高数第三章复习安排</li>
+            <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">英语六级听力计划</li>
+            <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">数据结构链表出题</li>
+          </ul>
+        </div>
+      </aside>
+
+    </main>
+  </div>
+
+  <script>
+    // ================== 智学矩阵 前端交互（纯前端模拟） ==================
+    (function () {
+      const input = document.getElementById("chatInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const messages = document.getElementById("messages");
+      const chatContainer = document.getElementById("chatContainer");
+
+      // ---------- 工具函数 ----------
+      function scrollBottom() {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+
+      // 输入框自动增高
+      function autoGrow() {
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 140) + "px";
+      }
+      input.addEventListener("input", autoGrow);
+
+      // 渲染 Markdown（marked.js），并做基础 XSS 过滤
+      function renderMarkdown(text) {
+        if (window.marked) {
+          return marked.parse(text);
+        }
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>");
+      }
+
+      function escapeHtml(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      }
+
+      // ---------- 气泡渲染 ----------
+      function addUserBubble(text) {
+        const row = document.createElement("div");
+        row.className = "flex justify-end";
+        row.innerHTML = '<div class="user-bubble">' + escapeHtml(text) + "</div>";
+        messages.appendChild(row);
+      }
+
+      function addAiBubble(html) {
+        const row = document.createElement("div");
+        row.className = "flex gap-3";
+        row.innerHTML = '<div class="ai-avatar">AI</div><div class="ai-bubble md-body">' + html + "</div>";
+        messages.appendChild(row);
+      }
+
+      // 打字机加载动画（三个绿色小点跳动）
+      function addTypingBubble() {
+        const row = document.createElement("div");
+        row.className = "flex gap-3";
+        row.id = "typingRow";
+        row.innerHTML =
+          '<div class="ai-avatar">AI</div>' +
+          '<div class="ai-bubble flex items-center gap-1.5 py-3.5">' +
+          '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>' +
+          "</div>";
+        messages.appendChild(row);
+        scrollBottom();
+      }
+
+      function removeTypingBubble() {
+        const row = document.getElementById("typingRow");
+        if (row) row.remove();
+      }
+
+      // Router Agent 状态行（浅灰色小字，可更新内容）
+      function addRouterStatus() {
+        const row = document.createElement("div");
+        row.className = "flex gap-3";
+        row.id = "routerRow";
+        row.innerHTML =
+          '<div class="ai-avatar" style="opacity:.45">AI</div>' +
+          '<div class="ai-bubble py-1"><p class="router-status">[Router Agent: 正在识别意图...]</p></div>';
+        messages.appendChild(row);
+        scrollBottom();
+      }
+
+      function updateRouterStatus(text) {
+        const el = document.querySelector("#routerRow .router-status");
+        if (el) {
+          el.textContent = text;
+          scrollBottom();
+        }
+      }
+
+      function removeRouterStatus() {
+        const row = document.getElementById("routerRow");
+        if (row) row.remove();
+      }
+
+      // Tool 状态行（浅灰色小字，展示工具调用过程）
+      function addToolStatus() {
+        const row = document.createElement("div");
+        row.className = "flex gap-3";
+        row.id = "toolRow";
+        row.innerHTML =
+          '<div class="ai-avatar" style="opacity:.45">🛠</div>' +
+          '<div class="ai-bubble py-1"><p class="router-status">[Tool: 正在调取课表...]</p></div>';
+        messages.appendChild(row);
+        scrollBottom();
+      }
+
+      function updateToolStatus(text) {
+        const el = document.querySelector("#toolRow .router-status");
+        if (el) {
+          el.textContent = text;
+          scrollBottom();
+        }
+      }
+
+      function removeToolStatus() {
+        const row = document.getElementById("toolRow");
+        if (row) row.remove();
+      }
+
+      // ---------- 发送流程（SSE 流式调用后端 /api/chat） ----------
+      let busy = false;
+
+      // 后端地址：与 Flask 端口一致；同源部署时直接用相对路径，
+      // 手机局域网访问时也能自动指向当前主机
+      const API_URL = location.origin + "/api/chat";
+
+      async function sendMessage() {
+        const text = input.value.trim();
+        if (!text || busy) return;
+
+        busy = true;
+        sendBtn.disabled = true;
+        addUserBubble(text);
+        input.value = "";
+        autoGrow();
+        scrollBottom();
+
+        // 先显示 Router Agent 状态行（浅灰色小字）
+        addRouterStatus();
+        addTypingBubble();
+
+        // SSE 事件状态
+        let sawRouter = false;
+        let sawTool = false;
+        let finalDone = false;
+
+        try {
+          const resp = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Accept": "text/event-stream",
+            },
+            body: JSON.stringify({ message: text }),
+          });
+
+          if (!resp.ok || !resp.body) {
+            // 非 SSE 错误响应（400 等），尝试解析 JSON
+            let errMsg = "请求失败（HTTP " + resp.status + "）";
+            try {
+              const errData = await resp.json();
+              if (errData.error) errMsg = errData.error;
+            } catch (_) { /* 忽略 */ }
+            throw new Error(errMsg);
+          }
+
+          // ---------- 解析 SSE 流 ----------
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE 消息以空行分隔，event:/data: 成对出现
+            const chunks = buffer.split("\n\n");
+            buffer = chunks.pop(); // 末尾可能是不完整消息，留待下轮
+
+            for (const chunk of chunks) {
+              let eventName = "";
+              let dataStr = "";
+              for (const line of chunk.split("\n")) {
+                if (line.startsWith("event:")) {
+                  eventName = line.slice(6).trim();
+                } else if (line.startsWith("data:")) {
+                  dataStr += line.slice(5).trim();
+                }
+              }
+              if (!eventName && !dataStr) continue;
+
+              let payload = {};
+              try { payload = JSON.parse(dataStr); } catch (_) { /* 忽略 */ }
+
+              if (eventName === "router") {
+                sawRouter = true;
+                updateRouterStatus(
+                  "[Router Agent: 意图=" + (payload.intent || "?") +
+                  " → " + (payload.agent || "") + "]"
+                );
+              } else if (eventName === "tool") {
+                sawTool = true;
+                if (!document.getElementById("toolRow")) addToolStatus();
+                updateToolStatus("[Tool: " + (payload.message || "正在调取课表...") + "]");
+              } else if (eventName === "final") {
+                finalDone = true;
+                // 工具读取完成：更新 Tool 状态行
+                if (sawTool) {
+                  updateToolStatus(
+                    payload.tool === "error"
+                      ? "[Tool: schedule.json 读取失败，已跳过工具数据]"
+                      : "[Tool: 课表数据读取完成]"
+                  );
+                }
+                addAiBubble(renderMarkdown(payload.reply || ""));
+              } else if (eventName === "error") {
+                console.error("[StudyMatrix] 后端返回错误:", payload.error);
+                addAiBubble(
+                  '<p class="text-red-500">⚠️ ' + escapeHtml(payload.error || "未知错误") + "</p>"
+                );
+              }
+            }
+          }
+
+          if (!finalDone) {
+            throw new Error("连接中断，未收到最终回复");
+          }
+        } catch (err) {
+          // 工具/课表读取异常：控制台打印错误
+          console.error("[StudyMatrix] 请求失败:", err);
+          addAiBubble(
+            '<p class="text-red-500">⚠️ ' + escapeHtml(err.message) + "</p>"
+          );
+        } finally {
+          removeTypingBubble();
+          busy = false;
+          sendBtn.disabled = false;
+          input.focus();
+          scrollBottom();
+        }
+      }
+
+      sendBtn.addEventListener("click", sendMessage);
+      input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      // ---------- 功能列表：点击自动填入输入框 ----------
+      document.querySelectorAll(".feature-item").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          input.value = btn.dataset.fill;
+          autoGrow();
+          input.focus();
+          // 手机端点击后收起抽屉
+          closeDrawer();
+        });
+      });
+
+      // ---------- 手机端抽屉侧边栏 ----------
+      const drawer = document.getElementById("drawer");
+      const overlay = document.getElementById("overlay");
+
+      function openDrawer() {
+        overlay.classList.remove("hidden");
+        drawer.classList.add("open");
+      }
+      function closeDrawer() {
+        overlay.classList.add("hidden");
+        drawer.classList.remove("open");
+      }
+
+      document.getElementById("menuBtn").addEventListener("click", openDrawer);
+      document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
+      overlay.addEventListener("click", closeDrawer);
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# 密钥与本地环境（API Key 只放部署平台的环境变量里！）
+.env
+
+# Python 运行产物
+__pycache__/
+*.pyc
+
+# 本地日志
+server.log
+server_err.log
+
+# 编辑器/系统
+.vscode/
+.idea/
+.DS_Store
+# 临时调试文件
+_opencode*
+gs*.txt
+staged_list.txt
