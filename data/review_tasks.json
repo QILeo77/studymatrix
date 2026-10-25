@@ -1,0 +1,65 @@
+{
+  "note": "艾宾浩斯复习任务存储：完成 new 任务后按 interval 生成 review_task（种子演示数据）",
+  "intervals": {
+    "default": [1, 2, 4, 7, 15],
+    "英语": [1, 2, 4, 7, 15, 30],
+    "数学": [1, 3, 7, 14]
+  },
+  "tasks": [
+    {
+      "id": "rt_001",
+      "subject": "高数",
+      "kp": "第三章 极限与连续",
+      "stage_index": 1,
+      "interval_days": 2,
+      "learned_date": "2026-10-20",
+      "due_date": "2026-10-22",
+      "priority": 3,
+      "done": false
+    },
+    {
+      "id": "rt_002",
+      "subject": "高数",
+      "kp": "第二章 导数应用",
+      "stage_index": 2,
+      "interval_days": 4,
+      "learned_date": "2026-10-17",
+      "due_date": "2026-10-21",
+      "priority": 2,
+      "done": false
+    },
+    {
+      "id": "rt_003",
+      "subject": "英语",
+      "kp": "四级核心词汇 Unit 5",
+      "stage_index": 0,
+      "interval_days": 1,
+      "learned_date": "2026-10-22",
+      "due_date": "2026-10-23",
+      "priority": 3,
+      "done": false
+    },
+    {
+      "id": "rt_004",
+      "subject": "数据结构",
+      "kp": "二叉树遍历",
+      "stage_index": 3,
+      "interval_days": 7,
+      "learned_date": "2026-10-15",
+      "due_date": "2026-10-22",
+      "priority": 2,
+      "done": false
+    },
+    {
+      "id": "rt_005",
+      "subject": "数据结构",
+      "kp": "链表基础操作",
+      "stage_index": 4,
+      "interval_days": 15,
+      "learned_date": "2026-10-06",
+      "due_date": "2026-10-21",
+      "priority": 1,
+      "done": false
+    }
+  ]
+}

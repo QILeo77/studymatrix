@@ -12,6 +12,15 @@
   <!-- marked.js：Markdown 渲染 -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+  <!-- KaTeX：数学公式（LaTeX）渲染 —— CSS + 核心 + 自动渲染扩展（国内可达 CDN） -->
+  <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.css" />
+  <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script src="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <!-- 备选源（bootcdn 不可达时整体替换为 npmmirror）：
+       https://registry.npmmirror.com/katex/0.16.11/files/dist/katex.min.css
+       https://registry.npmmirror.com/katex/0.16.11/files/dist/katex.min.js
+       https://registry.npmmirror.com/katex/0.16.11/files/dist/contrib/auto-render.min.js -->
+
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body class="bg-white text-gray-900 antialiased">
@@ -32,7 +41,7 @@
 
       <!-- 新建对话按钮 -->
       <div class="px-4 pb-2">
-        <button class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700
+        <button class="new-chat-btn w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700
                        text-white text-sm font-medium transition-colors duration-150 flex items-center justify-center gap-2">
           <span class="text-base leading-none">+</span> 新建对话
         </button>
@@ -42,32 +51,43 @@
       <nav class="px-3 py-2 space-y-0.5">
         <p class="px-2 pt-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">功能</p>
 
-        <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
-                       hover:bg-gray-50 transition-colors" data-fill="帮我制定一份下周的复习计划">
+        <button id="sidebarPlanBtn" class="menu-btn-item" type="button">
           <span class="text-base">📅</span> 智能复习规划
         </button>
 
-        <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
-                       hover:bg-gray-50 transition-colors" data-fill="查询我本周的空闲时间段">
-          <span class="text-base">🕒</span> 空闲课表查询
-        </button>
-
-        <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
-                       hover:bg-gray-50 transition-colors" data-fill="给我出几道数据结构的模拟测试题">
+        <button id="sidebarQuizBtn" class="menu-btn-item" type="button">
           <span class="text-base">📝</span> 模拟出题测试
         </button>
       </nav>
 
-      <!-- 底部历史对话列表 -->
+      <!-- ===== 我的学习画像入口（点击呼出配置弹窗） ===== -->
+      <div class="px-4 pb-2">
+        <button id="sidebarProfileBtn" class="profile-entry-card" type="button">
+          <span class="profile-entry-icon">👤</span>
+          <span class="profile-entry-text">
+            <span class="profile-entry-title">我的学习画像</span>
+            <span id="sidebarProfileSummary" class="profile-entry-summary">尚未配置，点击设置</span>
+          </span>
+          <span class="profile-entry-arrow">›</span>
+        </button>
+      </div>
+
+      <!-- ===== 我的专属课表入口（点击呼出网格录入弹窗） ===== -->
+      <div class="px-4 pb-2">
+        <button id="sidebarScheduleBtn" class="profile-entry-card schedule-entry" type="button">
+          <span class="profile-entry-icon">📅</span>
+          <span class="profile-entry-text">
+            <span class="profile-entry-title">我的专属课表</span>
+            <span id="sidebarScheduleSummary" class="profile-entry-summary">尚未录入，点击设置</span>
+          </span>
+          <span class="profile-entry-arrow">›</span>
+        </button>
+      </div>
+
+      <!-- 底部历史对话列表（localStorage 驱动，JS 动态渲染） -->
       <div class="flex-1 overflow-y-auto px-3 pt-3 pb-4 thin-scroll">
         <p class="px-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">历史对话</p>
-        <ul class="space-y-0.5 text-[13px] text-gray-400">
-          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">高数第三章复习安排</li>
-          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">英语六级听力计划</li>
-          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">数据结构链表出题</li>
-          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">操作系统进程调度疑问</li>
-          <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">下周空闲时间统计</li>
-        </ul>
+        <ul id="historyList" class="space-y-0.5 text-[13px]"></ul>
       </div>
 
       <!-- 侧边栏底部 -->
@@ -92,21 +112,37 @@
 
         <span class="breathing-dot"></span>
         <span class="text-sm font-medium text-gray-700">多 Agent 调度中心 · 待命中</span>
+
+        <!-- 实时时钟：JS 每分钟自动刷新 -->
+        <span id="liveClock" class="live-clock"></span>
+
+        <!-- 完成率看板（动态计算，打卡驱动） -->
+        <span id="progressBoard" class="progress-board" title="当前计划完成率">
+          📊 完成率 <span id="progressPercent">0%</span>
+          <span class="progress-bar"><span id="progressFill"></span></span>
+        </span>
+
+        <!-- 修改学习画像入口 -->
+        <button id="editProfileBtn" class="edit-profile-btn" title="修改学习画像">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          <span class="hidden sm:inline">修改画像</span>
+        </button>
       </header>
+
+      <!-- Proactive Agent：自主巡航状态栏 -->
+      <div id="cruiseBar" class="cruise-bar">
+        <span class="cruise-dot"></span>
+        <span id="cruiseStatus">Agent 自主巡航中...</span>
+        <span id="cruiseLast" class="cruise-last"></span>
+      </div>
 
       <!-- 聊天记录区 -->
       <div id="chatContainer" class="flex-1 overflow-y-auto thin-scroll">
         <div id="messages" class="max-w-3xl mx-auto px-4 md:px-6 py-6 space-y-6">
-
-          <!-- 欢迎语（AI 气泡示例） -->
-          <div class="flex gap-3">
-            <div class="ai-avatar">AI</div>
-            <div class="ai-bubble">
-              <p class="text-[15px] leading-7">你好！我是<strong class="text-emerald-600">智学矩阵</strong>的 AI 助手 🎓</p>
-              <p class="text-[15px] leading-7 mt-1">我可以帮你<strong>规划复习</strong>、<strong>查询空闲课表</strong>、<strong>模拟出题</strong>。点击左侧功能，或直接输入你的需求～</p>
-            </div>
-          </div>
-
+          <!-- 消息由 JS 动态渲染：欢迎语 / 历史回显 / 实时对话 -->
         </div>
       </div>
 
@@ -142,6 +178,173 @@
       <!-- 手机端侧边栏遮罩 -->
       <div id="overlay" class="overlay hidden"></div>
 
+      <!-- ===== 新手引导弹窗：学习画像 ===== -->
+      <div id="profileModal" class="profile-modal hidden">
+        <div class="profile-modal-mask"></div>
+        <div class="profile-modal-card">
+          <div class="pm-header">
+            <span class="pm-icon">🎓</span>
+            <div>
+              <h2 class="pm-title">欢迎使用智学矩阵</h2>
+              <p class="pm-subtitle">请完善您的学习画像</p>
+            </div>
+          </div>
+
+          <div class="pm-body">
+            <div class="pm-field">
+              <label for="pmGoal">学习目标</label>
+              <select id="pmGoal">
+                <option value="期末冲刺">期末冲刺</option>
+                <option value="考研备考">考研备考</option>
+                <option value="四六级">四六级</option>
+                <option value="日常学习">日常学习</option>
+              </select>
+            </div>
+
+            <!-- 备考科目与考试日期：动态行列表 -->
+            <div class="pm-field">
+              <label>备考科目与考试日期</label>
+              <div id="pmSubjectRows" class="pm-subject-rows">
+                <!-- 行由 JS 动态生成：科目输入 + 日期选择 (+ 删除按钮) -->
+              </div>
+              <button id="pmAddSubjectBtn" class="pm-add-subject-btn" type="button">+ 添加其他科目</button>
+            </div>
+
+            <div class="pm-field">
+              <label for="pmHours">每日学习时长</label>
+              <select id="pmHours">
+                <option value="2小时以内">2 小时以内</option>
+                <option value="2-4小时" selected>2 - 4 小时</option>
+                <option value="4-6小时">4 - 6 小时</option>
+                <option value="6小时以上">6 小时以上</option>
+              </select>
+            </div>
+          </div>
+
+          <button id="pmSaveBtn" class="pm-save-btn">保存画像并开始规划</button>
+          <button id="pmSkipBtn" class="pm-skip-btn">暂不填写，先逛逛</button>
+        </div>
+      </div>
+
+      <!-- ===== 我的专属课表弹窗：动态课程列表 ===== -->
+      <div id="scheduleModal" class="profile-modal hidden">
+        <div class="profile-modal-mask"></div>
+        <div class="profile-modal-card schedule-modal-card">
+          <div class="pm-header">
+            <span class="pm-icon">📅</span>
+            <div>
+              <h2 class="pm-title">配置我的专属课表</h2>
+              <p class="pm-subtitle">精确录入上课时间段与课程名</p>
+            </div>
+          </div>
+
+          <!-- 动态课程行列表 -->
+          <div id="scheduleRows" class="schedule-rows">
+            <!-- 行由 JS 生成：星期 + 开始~结束时间 + 课程名 (+ 删除) -->
+          </div>
+
+          <button id="sgAddRowBtn" class="pm-add-subject-btn" type="button">+ 添加其他课程</button>
+
+          <button id="sgSaveBtn" class="pm-save-btn">保存我的课表</button>
+          <button id="sgSkipBtn" class="pm-skip-btn">取消</button>
+        </div>
+      </div>
+
+      <!-- ===== 规划生成弹窗 ===== -->
+      <div id="planModal" class="profile-modal hidden">
+        <div class="profile-modal-mask"></div>
+        <div class="profile-modal-card">
+          <div class="pm-header">
+            <span class="pm-icon">📅</span>
+            <div>
+              <h2 class="pm-title">生成复习计划</h2>
+              <p class="pm-subtitle">填写后一键生成专属计划</p>
+            </div>
+          </div>
+
+          <div class="pm-body">
+            <div class="pm-field">
+              <label for="planWeak">薄弱科目</label>
+              <input id="planWeak" type="text" placeholder="如：高数、英语听力" />
+            </div>
+
+            <div class="pm-field">
+              <label for="planProgress">当前复习进度</label>
+              <input id="planProgress" type="text" placeholder="如：高数已复习到第三章" />
+            </div>
+
+            <div class="pm-field">
+              <label>想复习的时间段（未来三日，可多选）</label>
+              <div id="planMatrix" class="plan-matrix">
+                <!-- 三列日期 × 三个时段按钮，由 JS 渲染 -->
+              </div>
+              <p class="plan-matrix-tip">勾选你方便复习的时段，AI 只会在这几天内排期</p>
+            </div>
+          </div>
+
+          <button id="planSubmitBtn" class="pm-save-btn">开始生成计划</button>
+          <button id="planCancelBtn" class="pm-skip-btn">取消</button>
+        </div>
+      </div>
+
+      <!-- ===== 出题测试弹窗 ===== -->
+      <div id="quizModal" class="profile-modal hidden">
+        <div class="profile-modal-mask"></div>
+        <div class="profile-modal-card">
+          <div class="pm-header">
+            <span class="pm-icon">📝</span>
+            <div>
+              <h2 class="pm-title">模拟出题测试</h2>
+              <p class="pm-subtitle">选择科目，AI 出题考考你</p>
+            </div>
+          </div>
+
+          <div class="pm-body">
+            <div class="pm-field">
+              <label>选择科目</label>
+              <div id="quizSubjectList" class="quiz-subject-list">
+                <!-- 科目按钮由 JS 渲染 -->
+              </div>
+            </div>
+          </div>
+
+          <button id="quizSubmitBtn" class="pm-save-btn">开始测试</button>
+          <button id="quizCancelBtn" class="pm-skip-btn">取消</button>
+        </div>
+      </div>
+
+      <!-- ★ 任务3：看板数据调整弹窗 -->
+      <div id="dashConfigModal" class="profile-modal hidden">
+        <div class="profile-modal-mask"></div>
+        <div class="profile-modal-card">
+          <h3 class="text-base font-bold text-gray-800 mb-1">调整数据看板</h3>
+          <p class="text-xs text-gray-400 mb-4">手动输入后将覆盖自动统计结果（本地保存，仅影响显示）</p>
+
+          <label class="block mb-3">
+            <span class="text-xs font-medium text-gray-600">本周历史学习总时长（小时）</span>
+            <input id="dashCfgHours" type="number" min="0" step="0.1" placeholder="如 12.5"
+                   class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm
+                          focus:outline-none focus:border-emerald-400" />
+          </label>
+          <label class="block mb-3">
+            <span class="text-xs font-medium text-gray-600">当前整体完成率（%）</span>
+            <input id="dashCfgRate" type="number" min="0" max="100" step="1" placeholder="如 65"
+                   class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm
+                          focus:outline-none focus:border-emerald-400" />
+          </label>
+          <p class="text-[11px] text-gray-400 mb-4">留空 = 该项恢复自动计算</p>
+
+          <div class="flex items-center gap-2 justify-end">
+            <button id="dashCfgClear" type="button"
+                    class="px-3 py-2 rounded-lg text-xs text-gray-500 bg-gray-100 hover:bg-gray-200">恢复自动</button>
+            <button id="dashCfgCancel" type="button"
+                    class="px-3 py-2 rounded-lg text-xs text-gray-600 bg-white border border-gray-200 hover:bg-gray-50">取消</button>
+            <button id="dashCfgSave" type="button"
+                    class="px-4 py-2 rounded-lg text-xs font-medium text-white bg-emerald-500 hover:bg-emerald-600">保存</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 手机端抽屉侧边栏 -->
       <aside id="drawer" class="drawer">
         <div class="flex items-center justify-between px-5 pt-5 pb-3">
@@ -161,25 +364,109 @@
 
         <nav class="px-3 py-2 space-y-0.5">
           <p class="px-2 pt-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">功能</p>
-          <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
-                         hover:bg-gray-50" data-fill="帮我制定一份下周的复习计划"><span class="text-base">📅</span> 智能复习规划</button>
-          <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
-                         hover:bg-gray-50" data-fill="查询我本周的空闲时间段"><span class="text-base">🕒</span> 空闲课表查询</button>
-          <button class="feature-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600
-                         hover:bg-gray-50" data-fill="给我出几道数据结构的模拟测试题"><span class="text-base">📝</span> 模拟出题测试</button>
+          <button id="sidebarPlanBtnDrawer" class="menu-btn-item" type="button"><span class="text-base">📅</span> 智能复习规划</button>
+          <button id="sidebarQuizBtnDrawer" class="menu-btn-item" type="button"><span class="text-base">📝</span> 模拟出题测试</button>
         </nav>
+
+        <!-- ===== 我的学习画像入口（移动端，与 PC 一致） ===== -->
+        <div class="px-4 pb-2">
+          <button id="sidebarProfileBtnDrawer" class="profile-entry-card" type="button">
+            <span class="profile-entry-icon">👤</span>
+            <span class="profile-entry-text">
+              <span class="profile-entry-title">我的学习画像</span>
+              <span id="sidebarProfileSummaryDrawer" class="profile-entry-summary">尚未配置，点击设置</span>
+            </span>
+            <span class="profile-entry-arrow">›</span>
+          </button>
+        </div>
+
+        <!-- ===== 我的专属课表入口（移动端，与 PC 一致） ===== -->
+        <div class="px-4 pb-2">
+          <button id="sidebarScheduleBtnDrawer" class="profile-entry-card schedule-entry" type="button">
+            <span class="profile-entry-icon">📅</span>
+            <span class="profile-entry-text">
+              <span class="profile-entry-title">我的专属课表</span>
+              <span id="sidebarScheduleSummaryDrawer" class="profile-entry-summary">尚未录入，点击设置</span>
+            </span>
+            <span class="profile-entry-arrow">›</span>
+          </button>
+        </div>
 
         <div class="flex-1 overflow-y-auto px-3 pt-3 pb-4 thin-scroll">
           <p class="px-2 pb-1 text-[11px] font-medium text-gray-400 tracking-wider">历史对话</p>
-          <ul class="space-y-0.5 text-[13px] text-gray-400">
-            <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">高数第三章复习安排</li>
-            <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">英语六级听力计划</li>
-            <li class="px-3 py-2 rounded-lg truncate cursor-pointer hover:bg-gray-50">数据结构链表出题</li>
-          </ul>
+          <ul id="historyListDrawer" class="space-y-0.5 text-[13px]"></ul>
         </div>
       </aside>
 
     </main>
+
+    <!-- ===== 右侧数据可视化看板（桌面 ≥1024px 显示；手机折叠为按钮呼出） ===== -->
+    <aside id="dashboardPanel" class="dashboard-panel">
+      <!-- 移动端底部抽屉头部（拖动条 + 标题 + 关闭；PC 端隐藏） -->
+      <div class="dash-sheet-head">
+        <span class="dash-sheet-grip"></span>
+        <span class="dash-sheet-title">📊 数据看板</span>
+        <button id="dashCloseBtn" class="dash-sheet-close" type="button" aria-label="关闭">×</button>
+      </div>
+
+      <!-- ★ 任务3：看板工具条（调整 / 重置数据） -->
+      <div class="dash-tools">
+        <span class="dash-tools-label">数据看板</span>
+        <span id="dashManualTag" class="dash-manual-tag hidden">已手动调整</span>
+        <button id="dashSettingsBtn" class="dash-gear-btn" type="button" title="调整 / 重置数据">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1.08-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1.08 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="dashboard-inner">
+
+        <!-- 组件一：今日进度环 -->
+        <div class="dash-card">
+          <div class="dash-card-title">🎯 今日进度</div>
+          <div class="ring-wrap">
+            <div class="progress-ring" id="todayRing">
+              <div class="ring-mask"><span class="ring-num" id="ringPercent">0%</span><span class="ring-label">完成率</span></div>
+            </div>
+            <div class="ring-stats">
+              <div class="ring-stat"><b id="statDone">0</b><span>已完成</span></div>
+              <div class="ring-stat"><b id="statTotal">0</b><span>总任务</span></div>
+            </div>
+          </div>
+          <div id="ringTodayHint" class="ring-today-hint">今日 -</div>
+        </div>
+
+        <!-- 组件二：本周学习时长统计 -->
+        <div class="dash-card">
+          <div class="dash-card-title">📊 本周学习时长</div>
+          <div class="week-bars" id="weekBars">
+            <!-- 7 根柱条由 JS 渲染：周一~周日 -->
+          </div>
+          <div class="week-total">本周合计 <b id="weekTotalHours">0</b> 小时</div>
+        </div>
+
+        <!-- 组件三：我的本周课表 -->
+        <div class="dash-card">
+          <div class="dash-card-title">📅 本周课表</div>
+          <div class="sched-cards" id="schedCards">
+            <!-- 课程卡片由 JS 渲染（按天分组 + 小圆点） -->
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- 手机端看板遮罩（<1024px） -->
+    <div id="dashOverlay" class="dash-overlay hidden"></div>
+
+    <!-- 手机端看板呼出按钮（<1024px） -->
+    <button id="dashToggleBtn" class="dash-toggle-btn" type="button" title="数据看板">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="M7 16v-5M12 16V8M17 16v-3"/></svg>
+    </button>
   </div>
 
   <script>
@@ -189,6 +476,26 @@
       const sendBtn = document.getElementById("sendBtn");
       const messages = document.getElementById("messages");
       const chatContainer = document.getElementById("chatContainer");
+
+      // ---------- 顶部实时时钟（每分钟自动刷新） ----------
+      const clockEl = document.getElementById("liveClock");
+      const WEEKDAY_CN = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"];
+      // 用 getDay(): 0=周日 ... 6=周六，与 WEEKDAY_CN 对齐
+
+      function pad2(n) {
+        return n < 10 ? "0" + n : String(n);
+      }
+
+      function renderClock() {
+        const d = new Date();
+        const text =
+          d.getFullYear() + "年" + pad2(d.getMonth() + 1) + "月" + pad2(d.getDate()) + "日 " +
+          WEEKDAY_CN[d.getDay()] + " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+        if (clockEl) clockEl.textContent = text;
+      }
+
+      renderClock();                      // 页面加载立即显示
+      setInterval(renderClock, 60000);    // 此后每分钟刷新一次
 
       // ---------- 工具函数 ----------
       function scrollBottom() {
@@ -202,12 +509,43 @@
       }
       input.addEventListener("input", autoGrow);
 
-      // 渲染 Markdown（marked.js），并做基础 XSS 过滤
+      // 渲染 Markdown（marked.js）+ 数学公式（KaTeX），并做基础 XSS 过滤
+      // ⚠️ marked 会把 \( \) \[ \] 的反斜杠当转义符吃掉，
+      //    故先把单个反斜杠加倍：marked 会还原为 \( \) \[ \]，供 KaTeX 识别。
+      function protectMathDelimiters(text) {
+        return String(text || "")
+          .replace(/\\\(/g, "\\\\(")
+          .replace(/\\\)/g, "\\\\)")
+          .replace(/\\\[/g, "\\\\[")
+          .replace(/\\\]/g, "\\\\]");
+      }
+
       function renderMarkdown(text) {
+        const safeText = protectMathDelimiters(text);
         if (window.marked) {
-          return marked.parse(text);
+          return marked.parse(safeText);
         }
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/\n/g, "<br>");
+        return escapeHtml(safeText).replace(/\n/g, "<br>");
+      }
+
+      // 对已渲染的容器执行 KaTeX 自动渲染
+      // 支持定界符：$$...$$（块级）、\[...\]（块级）、\(...\)（行内）、$...$（行内）
+      function typesetMath(el) {
+        if (!el || typeof window.renderMathInElement !== "function") return;  // KaTeX 未加载则静默跳过
+        try {
+          window.renderMathInElement(el, {
+            delimiters: [
+              { left: "$$", right: "$$", display: true },
+              { left: "\\[", right: "\\]", display: true },
+              { left: "\\(", right: "\\)", display: false },
+              { left: "$", right: "$", display: false },
+            ],
+            throwOnError: false,   // 渲染失败时保留原文，不抛错
+            ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option"],
+          });
+        } catch (e) {
+          console.error("[Math] KaTeX 渲染失败:", e);
+        }
       }
 
       function escapeHtml(s) {
@@ -222,11 +560,276 @@
         messages.appendChild(row);
       }
 
-      function addAiBubble(html) {
+      // ---------- 打卡系统（单条任务级）+ 每日进度看板 ----------
+      const TASKCHECK_KEY = "studymatrix_taskcheck";   // { sessionId: { "任务内容": true, ... } }
+      // 日期关键词：周X / 星期X / X月X日（如 10月25日）
+      const DAY_PATTERNS = [
+        /周[一二三四五六日天]/,
+        /星期[一二三四五六日天]/,
+        /\d{1,2}月\d{1,2}日/,
+        /今天|明日|明天|今日/,
+      ];
+
+      let taskRows = [];   // [{tr, day, taskKey, done}]，最新计划表的行登记表
+
+      // 从单元格文本中提取日期关键词（无则返回 null）
+      function extractDay(text) {
+        for (let i = 0; i < DAY_PATTERNS.length; i++) {
+          const m = (text || "").match(DAY_PATTERNS[i]);
+          if (m) return m[0];
+        }
+        return null;
+      }
+
+      // ---- localStorage（任务内容为 Key）----
+      function loadTaskCheck(sessionId) {
+        try {
+          const all = JSON.parse(localStorage.getItem(TASKCHECK_KEY)) || {};
+          return all[sessionId] || {};
+        } catch (e) {
+          console.error("[StudyMatrix] 读取任务打卡状态失败:", e);
+          return {};
+        }
+      }
+
+      function saveTaskCheck(sessionId, state) {
+        try {
+          const all = JSON.parse(localStorage.getItem(TASKCHECK_KEY)) || {};
+          if (sessionId) all[sessionId] = state;
+          localStorage.setItem(TASKCHECK_KEY, JSON.stringify(all));
+        } catch (e) {
+          console.error("[StudyMatrix] 保存任务打卡状态失败:", e);
+        }
+      }
+
+      function removeTaskCheck(sessionId) {
+        try {
+          const all = JSON.parse(localStorage.getItem(TASKCHECK_KEY)) || {};
+          delete all[sessionId];
+          localStorage.setItem(TASKCHECK_KEY, JSON.stringify(all));
+        } catch (e) { /* 忽略 */ }
+      }
+
+      // ---- 最近打卡日期（供「连续 N 天未打卡」事件判定）----
+      const LASTCHECKIN_KEY = "studymatrix_lastcheckin";   // 存 "YYYY-MM-DD"
+      function markCheckinToday() {
+        try {
+          const d = new Date();
+          localStorage.setItem(LASTCHECKIN_KEY,
+            d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()));
+        } catch (e) { /* 忽略 */ }
+      }
+      function getDaysSinceCheckin() {
+        try {
+          const s = localStorage.getItem(LASTCHECKIN_KEY);
+          if (!s) return -1;   // 从未打卡
+          const p = s.split("-").map(Number);
+          const last = new Date(p[0], p[1] - 1, p[2]);
+          const n = new Date();
+          const today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+          return Math.max(0, Math.round((today - last) / 86400000));
+        } catch (e) { return -1; }
+      }
+
+      // ---------- 用户标识 + 打卡上报（供后端 Memory 长期记忆） ----------
+      const USER_ID_KEY = "studymatrix_user_id";
+      function getUserId() {
+        try {
+          let id = localStorage.getItem(USER_ID_KEY);
+          if (!id) {
+            id = "u_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+            localStorage.setItem(USER_ID_KEY, id);
+          }
+          return id;
+        } catch (e) { return "default"; }
+      }
+      // 打卡情况写入长期记忆（fire-and-forget，不阻塞 UI）
+      function reportCheckin() {
+        try {
+          fetch("/api/memory/checkin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: getUserId(),
+              progress: (typeof getProgressData === "function") ? getProgressData() : "",
+              undone: (typeof getUndoneCount === "function") ? getUndoneCount() : -1,
+            }),
+          }).catch(function () { /* 忽略 */ });
+        } catch (e) { /* 忽略 */ }
+      }
+
+      // ---- 顶部总进度看板：已完成任务数 / 任务总数 ----
+      function updateProgressBoard() {
+        const total = taskRows.length;
+        const done = taskRows.filter(function (r) { return r.done; }).length;
+        const pct = total === 0 ? 0 : Math.round((done / total) * 100);
+        const pEl = document.getElementById("progressPercent");
+        const fEl = document.getElementById("progressFill");
+        if (pEl) pEl.textContent = pct + "%";
+        if (fEl) fEl.style.width = pct + "%";
+      }
+
+      // ---- 每日进度面板刷新（表格上方）----
+      function updateDayPanels() {
+        // 按 day 分组统计
+        const groups = {};
+        taskRows.forEach(function (r) {
+          if (!r.day) return;
+          if (!groups[r.day]) groups[r.day] = { done: 0, total: 0 };
+          groups[r.day].total += 1;
+          if (r.done) groups[r.day].done += 1;
+        });
+        const days = Object.keys(groups);
+        const isSingleDay = days.length === 1;
+
+        // 更新每个面板
+        taskRows.some(function (r) {
+          const panel = r.panelEl;   // 任一行引用所在面板
+          if (!panel) return false;
+          const list = isSingleDay ? days : days;
+          renderDayPanel(panel, groups, isSingleDay);
+          return true;
+        });
+      }
+
+      function renderDayPanel(panel, groups, isSingleDay) {
+        panel.innerHTML = "";
+        const days = Object.keys(groups);
+        days.forEach(function (day) {
+          const g = groups[day];
+          const pct = Math.round((g.done / g.total) * 100);
+
+          const item = document.createElement("div");
+          item.className = "day-progress-item" + (pct === 100 ? " complete" : "");
+
+          // 单日计划：醒目整体进度（大号）；多日：每日一行进度条
+          if (isSingleDay) {
+            item.className = "day-progress-single" + (pct === 100 ? " complete" : "");
+            item.innerHTML =
+              '<div class="dp-label">📋 ' + escapeHtml(day) + ' · 今日进度</div>' +
+              '<div class="dp-bar"><span class="dp-fill" style="width:' + pct + '%"></span></div>' +
+              '<div class="dp-num">' + g.done + '/' + g.total + ' · <b>' + pct + '%</b>' +
+              (pct === 100 ? ' ✓ 全部完成！' : '') + '</div>';
+          } else {
+            item.innerHTML =
+              '<div class="dp-row">' +
+              '<span class="dp-day">' + escapeHtml(day) + '</span>' +
+              '<span class="dp-bar"><span class="dp-fill" style="width:' + pct + '%"></span></span>' +
+              '<span class="dp-num">' + g.done + '/' + g.total + ' · ' + pct + '%' +
+              (pct === 100 ? ' ✓' : '') + '</span>' +
+              '</div>';
+          }
+          panel.appendChild(item);
+        });
+      }
+
+      // ---- 核心：为计划表每行插入 checkbox，绑定单条打卡 ----
+      function attachCheckButtons(bubbleEl, restore) {
+        if (!bubbleEl) return;
+        const tables = bubbleEl.querySelectorAll("table");
+        if (tables.length === 0) return;
+
+        // 只处理最后一个表格（最新计划表）
+        const table = tables[tables.length - 1];
+        const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
+        if (bodyRows.length === 0) return;
+
+        // 1. 状态：restore 从 localStorage 恢复（任务内容为 Key）；新计划重置
+        const sid = currentSessionId || "";
+        const state = restore ? loadTaskCheck(sid) : {};
+
+        // 2. 表头最左插入「打卡」列
+        const headerRow = table.querySelector("thead tr") || table.querySelector("tr");
+        if (headerRow && !headerRow.querySelector(".task-check-cell")) {
+          const th = document.createElement("th");
+          th.textContent = "打卡";
+          th.className = "task-check-cell";
+          headerRow.insertBefore(th, headerRow.firstChild);
+        }
+
+        // 3. 每行最左插入 checkbox（这一列顺便显示所属日期）
+        taskRows = [];
+        bodyRows.forEach(function (tr) {
+          const tds = tr.querySelectorAll("td");
+          const firstCell = tds[0];                        // 原第一列：日期
+          const timeCell = tds[1];                         // 第二列：时间段
+          const taskCell = tds[2] || tr.lastElementChild;  // 第三列：任务内容
+          const day = firstCell ? extractDay(firstCell.textContent) : null;
+          const dayInfo = parseDayInfo(firstCell ? firstCell.textContent : "");   // ★ 任务1
+          const taskKey = (taskCell ? taskCell.textContent : "").trim().slice(0, 50);  // 任务内容为 Key
+          const min = extractDurationMin(taskCell ? taskCell.textContent : "",     // ★ 任务2
+                                         timeCell ? timeCell.textContent : "");
+
+          const td = document.createElement("td");
+          td.className = "task-check-cell";
+          if (day) td.title = day;
+
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.className = "task-check";
+          cb.checked = !!state[taskKey];
+
+          cb.addEventListener("change", function () {
+            state[taskKey] = cb.checked;                    // 单条任务状态
+            saveTaskCheck(currentSessionId || "", state);  // 立即持久化
+            if (cb.checked) markCheckinToday();            // ★ 记录最近打卡日期（连续未打卡判定）
+            reportCheckin();                               // ★ Memory：上报打卡情况
+            const rec = taskRows.find(function (r) { return r.tr === tr; });
+            if (rec) rec.done = cb.checked;
+            tr.classList.toggle("done-row", cb.checked);   // 删除线 + 变灰 + 浅灰背景
+            updateDayPanels();                              // 每日进度联动
+            updateProgressBoard();                          // 顶部总进度
+            if (typeof refreshDashboard === "function") refreshDashboard();  // ★ 右侧看板联动
+          });
+
+          td.appendChild(cb);
+          // 日期小标签（同组多行只显示第一行的日期，避免重复）
+          if (day) {
+            const prevTr = tr.previousElementSibling;
+            const prevDay = prevTr && prevTr.querySelector("td")
+              ? extractDay(prevTr.querySelector("td").textContent) : null;
+            if (prevDay !== day) {
+              const tag = document.createElement("div");
+              tag.className = "task-day-tag";
+              tag.textContent = day;
+              td.appendChild(tag);
+            }
+          }
+
+          tr.insertBefore(td, tr.firstChild);
+          tr.classList.toggle("done-row", cb.checked);      // 恢复时立即应用划线
+          taskRows.push({ tr: tr, day: day, dayInfo: dayInfo, taskKey: taskKey,
+                          done: cb.checked, min: min, panelEl: null });
+        });
+
+        // 4. 表格上方生成每日进度面板
+        const panel = document.createElement("div");
+        panel.className = "day-progress-panel";
+        table.parentNode.insertBefore(panel, table);
+        taskRows.forEach(function (r) { r.panelEl = panel; });
+
+        // 5. 初始渲染（含恢复状态）
+        const groups0 = {};
+        taskRows.forEach(function (r) {
+          if (!r.day) return;
+          if (!groups0[r.day]) groups0[r.day] = { done: 0, total: 0 };
+          groups0[r.day].total += 1;
+          if (r.done) groups0[r.day].done += 1;
+        });
+        renderDayPanel(panel, groups0, Object.keys(groups0).length === 1);
+        updateProgressBoard();
+        // 新计划渲染后同步看板（早期加载阶段看板可能尚未就绪 → 容错跳过）
+        try { if (typeof refreshDashboard === "function") refreshDashboard(); } catch (e) {}
+      }
+
+      function addAiBubble(html, restoreCheck) {
         const row = document.createElement("div");
         row.className = "flex gap-3";
         row.innerHTML = '<div class="ai-avatar">AI</div><div class="ai-bubble md-body">' + html + "</div>";
         messages.appendChild(row);
+        typesetMath(row.querySelector(".ai-bubble"));   // ★ 渲染 LaTeX 数学公式
+        // 渲染后为最新计划表每行插入 checkbox（restoreCheck=true 时从 localStorage 恢复）
+        attachCheckButtons(row.querySelector(".ai-bubble"), !!restoreCheck);
       }
 
       // 打字机加载动画（三个绿色小点跳动）
@@ -280,7 +883,7 @@
         row.id = "toolRow";
         row.innerHTML =
           '<div class="ai-avatar" style="opacity:.45">🛠</div>' +
-          '<div class="ai-bubble py-1"><p class="router-status">[Tool: 正在调取课表...]</p></div>';
+          '<div class="ai-bubble py-1"><p class="router-status">[Agent 正在感知学习环境...]</p></div>';
         messages.appendChild(row);
         scrollBottom();
       }
@@ -293,9 +896,662 @@
         }
       }
 
+      // ★ 高逼格标签：[Agent 正在自主调用外部工具...]（扫光动画 + 工具名 + 结果）
+      function renderToolTag(tool, ok) {
+        const el = document.querySelector("#toolRow .router-status");
+        if (!el) return;
+        const name = tool ? escapeHtml(String(tool)) : "";
+        const mark = ok === false ? " ✗ 失败" : (ok === true ? " ✓" : " …");
+        el.innerHTML =
+          '<span class="agent-tag">[Agent 正在自主调用外部工具...]</span>' +
+          (name ? '<span class="agent-tag-tool">' + name + mark + '</span>' : "");
+        scrollBottom();
+      }
+
       function removeToolStatus() {
         const row = document.getElementById("toolRow");
         if (row) row.remove();
+      }
+
+      // ---------- 会话管理（localStorage 持久化，真实历史对话） ----------
+      const STORAGE_KEY = "studymatrix_sessions";
+      let sessions = [];            // [{id, name, createdAt, updatedAt, messages:[{role, content, time}]}]
+      let currentSessionId = null;
+
+      function nowTimeStr() {
+        const d = new Date();
+        return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) +
+          " " + pad2(d.getHours()) + ":" + pad2(d.getMinutes());
+      }
+
+      function loadSessions() {
+        try {
+          sessions = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+          // 清理无消息的空会话（新建后未发一言的），保持存储干净
+          sessions = sessions.filter(function (s) { return s.messages.length > 0; });
+        } catch (e) {
+          console.error("[StudyMatrix] 读取历史会话失败:", e);
+          sessions = [];
+        }
+      }
+
+      function saveSessions() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+        } catch (e) {
+          console.error("[StudyMatrix] 保存会话失败:", e);
+        }
+      }
+
+      function getSession(id) {
+        return sessions.find(function (s) { return s.id === id; }) || null;
+      }
+
+      function currentSession() {
+        return getSession(currentSessionId);
+      }
+
+      // 新建对话：清空聊天区 + 生成时间戳会话 ID
+      function createSession() {
+        currentSessionId = "s_" + Date.now();
+        sessions.push({
+          id: currentSessionId,
+          name: "新对话",
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messages: [],
+        });
+        clearChatArea();
+        renderWelcome();
+        renderHistoryList();
+        return currentSessionId;
+      }
+
+      // 追加消息并持久化；自动命名：取第一句用户消息前 10 个字
+      function appendToSession(role, content) {
+        const s = currentSession();
+        if (!s) return;
+        s.messages.push({ role: role, content: content, time: nowTimeStr() });
+        s.updatedAt = Date.now();
+        if (role === "user" && (!s.name || s.name === "新对话")) {
+          s.name = content.replace(/\s+/g, " ").slice(0, 10) + "...";
+        }
+        saveSessions();
+        renderHistoryList();
+      }
+
+      // 清空聊天区（移除全部消息行）
+      function clearChatArea() {
+        messages.innerHTML = "";
+      }
+
+      // 欢迎气泡（新会话时展示；根据课表配置状态动态提示）
+      function renderWelcome() {
+        const hasSchedule = loadUserSchedule().length > 0;
+        if (hasSchedule) {
+          addAiBubble(
+            '你好！我是<strong class="text-emerald-600">智学矩阵管家</strong> 🎓<br>' +
+            '已读取你的<strong>专属课表</strong>。你可以直接说"帮我排明天的复习计划"，' +
+            '我会结合课表空闲时间精准安排～'
+          );
+        } else {
+          addAiBubble(
+            '你好！我是<strong class="text-emerald-600">智学矩阵管家</strong> 🎓<br>' +
+            '建议你先点击左侧<strong>【我的专属课表】</strong>录入你的上课时间，' +
+            '这样我能为你制定更精准的计划。如果暂不录入，' +
+            '我将为你提供<strong>通用的学习建议</strong>。'
+          );
+        }
+      }
+
+      // 渲染历史列表（桌面 + 手机抽屉两份，按更新时间倒序）
+      function renderHistoryList() {
+        const lists = [
+          document.getElementById("historyList"),
+          document.getElementById("historyListDrawer"),
+        ];
+        const sorted = sessions
+          .slice()
+          .sort(function (a, b) { return b.updatedAt - a.updatedAt; })
+          .filter(function (s) { return s.messages.length > 0; });
+
+        lists.forEach(function (ul) {
+          if (!ul) return;
+          ul.innerHTML = "";
+
+          if (sorted.length === 0) {
+            const li = document.createElement("li");
+            li.className = "px-3 py-2 text-gray-300 text-xs";
+            li.textContent = "暂无历史对话";
+            ul.appendChild(li);
+            return;
+          }
+
+          sorted.forEach(function (s) {
+            const li = document.createElement("li");
+            li.className = "session-item" + (s.id === currentSessionId ? " active" : "");
+            li.title = s.name;
+
+            const name = document.createElement("span");
+            name.className = "session-name";
+            name.textContent = s.name;
+
+            // 垃圾桶按钮：悬浮时显示，点击删除该会话
+            const del = document.createElement("button");
+            del.className = "delete-session-btn";
+            del.title = "删除该对话";
+            del.innerHTML =
+              '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+              'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+              '<path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z"/>' +
+              '<path d="M10 11v6M14 11v6"/></svg>';
+            del.addEventListener("click", function (e) {
+              e.stopPropagation();
+              deleteSession(s.id);
+            });
+
+            li.appendChild(name);
+            li.appendChild(del);
+            li.addEventListener("click", function () {
+              loadSession(s.id);
+              closeDrawer(); // 手机端点击后收起抽屉
+            });
+            ul.appendChild(li);
+          });
+        });
+      }
+
+      // 回显历史会话：完整还原用户气泡 + AI 气泡（Markdown 重新渲染）
+      // 含计划表的消息从 localStorage 恢复按天打卡状态
+      function loadSession(id) {
+        const s = getSession(id);
+        if (!s) return;
+        currentSessionId = id;
+        clearChatArea();
+        s.messages.forEach(function (m) {
+          if (m.role === "user") {
+            addUserBubble(m.content);
+          } else {
+            addAiBubble(renderMarkdown(m.content), true);   // restoreCheck: 恢复打卡
+          }
+        });
+        renderHistoryList();
+        scrollBottom();
+      }
+
+      // 删除会话（删除当前会话则自动开新会话），同步清理其打卡状态
+      function deleteSession(id) {
+        sessions = sessions.filter(function (s) { return s.id !== id; });
+        saveSessions();
+        removeTaskCheck(id);         // 清理该会话的任务打卡记录
+        if (currentSessionId === id) {
+          createSession();
+        } else {
+          renderHistoryList();
+        }
+      }
+
+      // 新建对话按钮（桌面 + 抽屉两处统一绑定）
+      document.querySelectorAll(".new-chat-btn").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          createSession();
+          closeDrawer();
+          input.focus();
+        });
+      });
+
+      // 页面初始化：读取 localStorage 历史 + 开启新会话
+      loadSessions();
+      createSession();
+
+      // ---------- 备考科目与考试日期：动态行列表 ----------
+      const pmSubjectRows = document.getElementById("pmSubjectRows");
+      const pmAddSubjectBtn = document.getElementById("pmAddSubjectBtn");
+
+      // 添加一行（subject/date 回填值可选；removable=false 为首行，无删除按钮）
+      function addSubjectRow(subject, date, removable) {
+        const row = document.createElement("div");
+        row.className = "pm-subject-row";
+
+        const nameInput = document.createElement("input");
+        nameInput.type = "text";
+        nameInput.placeholder = "如高数";
+        nameInput.value = subject || "";
+
+        const dateInput = document.createElement("input");
+        dateInput.type = "date";
+        dateInput.value = date || "";
+
+        row.appendChild(nameInput);
+        row.appendChild(dateInput);
+
+        // 非首行：最右侧红色 x 删除按钮
+        if (removable !== false) {
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "pm-subject-remove";
+          removeBtn.textContent = "×";
+          removeBtn.title = "删除该科目";
+          removeBtn.addEventListener("click", function () {
+            row.remove();
+          });
+          row.appendChild(removeBtn);
+        }
+
+        pmSubjectRows.appendChild(row);
+        return row;
+      }
+
+      // + 添加其他科目：动态追加一行（带删除按钮）
+      pmAddSubjectBtn.addEventListener("click", function () {
+        const row = addSubjectRow("", "", true);
+        row.querySelector('input[type="text"]').focus();
+      });
+
+      // 收集所有有效行：[{subject, examDate}]
+      function collectSubjectRows() {
+        const rows = [];
+        pmSubjectRows.querySelectorAll(".pm-subject-row").forEach(function (row) {
+          const subject = row.querySelector('input[type="text"]').value.trim();
+          const examDate = row.querySelector('input[type="date"]').value;
+          if (subject) rows.push({ subject: subject, examDate: examDate });
+        });
+        return rows;
+      }
+
+      // 渲染行列表（含默认行）
+      function renderSubjectRows(subjects) {
+        pmSubjectRows.innerHTML = "";
+        const list = subjects && subjects.length ? subjects : [{}];
+        list.forEach(function (s, i) {
+          // 第一行无删除按钮；其余行可删
+          addSubjectRow(s.subject, s.examDate, i !== 0);
+        });
+        // 只有一行时不显示删除按钮的场景已由 i!==0 保证
+      }
+
+      // ---------- 新手引导弹窗：学习画像（user_profile） ----------
+      const USER_PROFILE_KEY = "user_profile";
+      const profileModal = document.getElementById("profileModal");
+      const pmSaveBtn = document.getElementById("pmSaveBtn");
+      const pmSkipBtn = document.getElementById("pmSkipBtn");
+      const editProfileBtn = document.getElementById("editProfileBtn");
+
+      function loadUserProfile() {
+        try {
+          return JSON.parse(localStorage.getItem(USER_PROFILE_KEY)) || null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function saveUserProfile(p) {
+        try {
+          localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(p));
+        } catch (e) {
+          console.error("[StudyMatrix] 保存学习画像失败:", e);
+        }
+      }
+
+      function openProfileModal(prefill) {
+        // 回填已有画像（修改场景）
+        const p = prefill || loadUserProfile() || {};
+        document.getElementById("pmGoal").value = p.goal || "期末冲刺";
+        document.getElementById("pmHours").value = p.hours || "2-4小时";
+        // 备考科目与考试日期：subjects 数组回填为行列表（兼容旧版单日期+weak 字段）
+        let subjects = Array.isArray(p.subjects) ? p.subjects : [];
+        if (subjects.length === 0 && (p.weak || p.examDate)) {
+          // 旧数据迁移：薄弱科目拆分 + 单一考试日期
+          const olds = (p.weak || "").split("、").map(function (s) { return s.trim(); })
+            .filter(function (s) { return s; });
+          if (olds.length) {
+            subjects = olds.map(function (s) {
+              return { subject: s, examDate: p.examDate || "" };
+            });
+          }
+        }
+        renderSubjectRows(subjects);
+        profileModal.classList.remove("hidden");
+      }
+
+      function closeProfileModal() {
+        profileModal.classList.add("hidden");
+      }
+
+      // 保存画像：写入 localStorage + 关闭弹窗 + 自动填入引导话术（不发送）
+      pmSaveBtn.addEventListener("click", function () {
+        // 收集所有填写的行：[{subject, examDate}]
+        const subjects = collectSubjectRows();
+
+        // 核心拼接：高数（考试日期：2026-11-10）、英语（考试日期：2026-11-15）
+        const subjectText = subjects.map(function (s) {
+          return s.examDate
+            ? s.subject + "（考试日期：" + s.examDate + "）"
+            : s.subject;
+        }).join("、");
+        const weakStr = subjects.map(function (s) { return s.subject; }).join("、");
+        const firstDate = subjects.length && subjects[0].examDate ? subjects[0].examDate : "";
+
+        const profile = {
+          goal: document.getElementById("pmGoal").value,
+          subjects: subjects,            // 数组存档（回填用）
+          hours: document.getElementById("pmHours").value,
+          weak: weakStr,                 // 兼容侧边栏与后端画像
+          examDate: firstDate,           // 兼容旧字段（取首行日期）
+        };
+        saveUserProfile(profile);       // ★ localStorage 持久化（user_profile 为 Key）
+        updateSidebarSummary(profile);  // 更新侧边栏入口摘要
+        closeProfileModal();
+
+        // 自动填入一句话（不自动发送，让用户确认）
+        input.value =
+          "我的目标是" + profile.goal +
+          (subjectText ? "，备考科目与考试日期：" + subjectText : "") +
+          "，每天能学 " + profile.hours +
+          "。请结合我的课表，帮我制定一份复习计划。";
+        autoGrow();
+        input.focus();
+      });
+
+      // 暂不填写（新用户也可直接体验）
+      pmSkipBtn.addEventListener("click", closeProfileModal);
+
+      // 点击遮罩关闭
+      profileModal.querySelector(".profile-modal-mask").addEventListener("click", closeProfileModal);
+
+      // 顶栏「修改画像」入口：重新打开弹窗（带已有数据回填）
+      editProfileBtn.addEventListener("click", function () {
+        openProfileModal();
+      });
+
+      // 侧边栏「我的学习画像」入口卡片：点击呼出配置弹窗
+      const sidebarProfileBtn = document.getElementById("sidebarProfileBtn");
+      if (sidebarProfileBtn) {
+        sidebarProfileBtn.addEventListener("click", function () {
+          openProfileModal();          // 弹窗打开时自动从 localStorage 回填
+        });
+      }
+
+      // 侧边栏入口摘要：显示当前核心画像状态（如"目标：期末冲刺 | 2门科目"）
+      function updateSidebarSummary(p) {
+        const els = [
+          document.getElementById("sidebarProfileSummary"),
+          document.getElementById("sidebarProfileSummaryDrawer"),
+        ].filter(Boolean);
+        if (!els.length) return;
+        if (!p || (!p.goal && !(p.subjects && p.subjects.length))) {
+          els.forEach(function (el) {
+            el.textContent = "尚未配置，点击设置";
+            el.classList.remove("configured");
+          });
+          return;
+        }
+        const count = (p.subjects || []).length;
+        let text = "目标：" + (p.goal || "未设置");
+        if (count > 0) text += " | " + count + "门科目";
+        els.forEach(function (el) {
+          el.textContent = text;
+          el.classList.add("configured");
+        });
+      }
+
+      // 状态记忆：有画像不打扰（同时刷新入口摘要）；没有则首次弹窗引导
+      (function initProfileModal() {
+        const existing = loadUserProfile();
+        if (existing) {
+          updateSidebarSummary(existing);   // 已有画像：更新摘要，不弹窗
+        } else {
+          setTimeout(function () {
+            openProfileModal();             // 新用户：加载后自动弹出
+          }, 600);
+        }
+      })();
+
+      // ---------- 我的专属课表：动态课程行列表（user_schedule） ----------
+      const SCHEDULE_KEY = "user_schedule";
+      const SCHEDULE_DAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+      const SCHEDULE_TIMES = [
+        "07:00", "07:40", "08:00", "08:40", "09:00", "09:40", "10:00", "10:40",
+        "11:00", "11:40", "12:00", "13:00", "13:40", "14:00", "14:40", "15:00",
+        "15:40", "16:00", "16:40", "17:00", "17:40", "18:00", "18:40", "19:00",
+        "19:40", "20:00", "20:40", "21:00", "21:40", "22:00",
+      ];
+      const scheduleModal = document.getElementById("scheduleModal");
+      const scheduleRowsEl = document.getElementById("scheduleRows");
+      const sidebarScheduleBtn = document.getElementById("sidebarScheduleBtn");
+      const sgAddRowBtn = document.getElementById("sgAddRowBtn");
+      const sgSaveBtn = document.getElementById("sgSaveBtn");
+      const sgSkipBtn = document.getElementById("sgSkipBtn");
+
+      // localStorage：user_schedule 存 [{day, start, end, course}, ...]
+      function loadUserSchedule() {
+        try {
+          const data = JSON.parse(localStorage.getItem(SCHEDULE_KEY));
+          return Array.isArray(data) ? data : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveUserSchedule(rows) {
+        try {
+          localStorage.setItem(SCHEDULE_KEY, JSON.stringify(rows));
+        } catch (e) {
+          console.error("[StudyMatrix] 保存课表失败:", e);
+        }
+      }
+
+      // 生成时间下拉选项
+      function buildTimeOptions(selected) {
+        return SCHEDULE_TIMES.map(function (t) {
+          return '<option value="' + t + '"' + (t === selected ? " selected" : "") + ">" + t + "</option>";
+        }).join("");
+      }
+
+      // 生成星期下拉选项
+      function buildDayOptions(selected) {
+        return SCHEDULE_DAYS.map(function (d) {
+          return '<option value="' + d + '"' + (d === selected ? " selected" : "") + ">" + d + "</option>";
+        }).join("");
+      }
+
+      // 添加一行课程（回填值可选；removable=false 为默认行）
+      function addScheduleRow(item, removable) {
+        const it = item || {};
+        const row = document.createElement("div");
+        row.className = "sched-row";
+
+        // 星期下拉
+        const daySel = document.createElement("select");
+        daySel.className = "sched-day";
+        daySel.innerHTML = buildDayOptions(it.day || "周一");
+        row.appendChild(daySel);
+
+        // 时间组：开始 - 结束
+        const timeGroup = document.createElement("span");
+        timeGroup.className = "sched-time-group";
+
+        const startSel = document.createElement("select");
+        startSel.className = "sched-time";
+        startSel.innerHTML = buildTimeOptions(it.start || "08:00");
+        const dash = document.createElement("span");
+        dash.className = "sched-time-dash";
+        dash.textContent = "—";
+        const endSel = document.createElement("select");
+        endSel.className = "sched-time";
+        endSel.innerHTML = buildTimeOptions(it.end || "09:40");
+        // 结束时间默认顺延：若未回填，自动选开始时间的下一档
+        if (!it.end) {
+          const idx = SCHEDULE_TIMES.indexOf(startSel.value);
+          if (idx >= 0 && idx + 1 < SCHEDULE_TIMES.length) {
+            endSel.value = SCHEDULE_TIMES[idx + 1];
+          }
+        }
+        startSel.addEventListener("change", function () {
+          // 开始变更时，结束自动保持在开始之后
+          const si = SCHEDULE_TIMES.indexOf(startSel.value);
+          const ei = SCHEDULE_TIMES.indexOf(endSel.value);
+          if (si >= 0 && ei <= si) {
+            endSel.value = SCHEDULE_TIMES[Math.min(si + 1, SCHEDULE_TIMES.length - 1)];
+          }
+        });
+
+        timeGroup.appendChild(startSel);
+        timeGroup.appendChild(dash);
+        timeGroup.appendChild(endSel);
+        row.appendChild(timeGroup);
+
+        // 课程名输入框
+        const courseInput = document.createElement("input");
+        courseInput.type = "text";
+        courseInput.className = "sched-course";
+        courseInput.placeholder = "如高等数学";
+        courseInput.maxLength = 15;
+        courseInput.value = it.course || "";
+        row.appendChild(courseInput);
+
+        // 红色删除按钮（默认行无）
+        if (removable !== false) {
+          const removeBtn = document.createElement("button");
+          removeBtn.type = "button";
+          removeBtn.className = "sched-remove";
+          removeBtn.textContent = "×";
+          removeBtn.title = "删除该课程";
+          removeBtn.addEventListener("click", function () {
+            row.remove();
+          });
+          row.appendChild(removeBtn);
+        }
+
+        scheduleRowsEl.appendChild(row);
+        return row;
+      }
+
+      // + 添加其他课程：追加新行
+      sgAddRowBtn.addEventListener("click", function () {
+        addScheduleRow({}, true).querySelector(".sched-course").focus();
+      });
+
+      // 收集所有有效行（课程名非空）
+      function collectScheduleRows() {
+        const rows = [];
+        scheduleRowsEl.querySelectorAll(".sched-row").forEach(function (row) {
+          const day = row.querySelector(".sched-day").value;
+          const start = row.querySelector(".sched-time:nth-of-type(1)") ?
+            row.querySelectorAll(".sched-time")[0].value : "";
+          const end = row.querySelectorAll(".sched-time")[1].value;
+          const course = row.querySelector(".sched-course").value.trim();
+          if (course && start && end) {
+            rows.push({ day: day, start: start, end: end, course: course });
+          }
+        });
+        return rows;
+      }
+
+      // 渲染行列表（默认一行；有存档则回填）
+      function renderScheduleRows(rows) {
+        scheduleRowsEl.innerHTML = "";
+        const list = rows && rows.length ? rows : [{}];
+        list.forEach(function (it, i) {
+          addScheduleRow(it, i !== 0);   // 首行不可删
+        });
+      }
+
+      // 拼接自然语言：周一 08:00-09:40 高等数学；周二 10:00-11:40 英语。
+      function buildScheduleText() {
+        const rows = loadUserSchedule();
+        if (!rows.length) return "";
+        return rows.map(function (r) {
+          return r.day + " " + r.start + "-" + r.end + " " + r.course;
+        }).join("；") + "。";
+      }
+
+      // 入口摘要：已录入 N 门课程
+      function updateScheduleSummary() {
+        const els = [
+          document.getElementById("sidebarScheduleSummary"),
+          document.getElementById("sidebarScheduleSummaryDrawer"),
+        ].filter(Boolean);
+        if (!els.length) return;
+        const count = loadUserSchedule().length;
+        const configured = count > 0;
+        const text = configured ? ("已录入 " + count + " 门课程") : "未配置，点击录入";
+        els.forEach(function (el) {
+          el.textContent = text;
+          el.classList.toggle("configured", configured);
+        });
+      }
+
+      function openScheduleModal() {
+        renderScheduleRows(loadUserSchedule());   // localStorage 回填
+        scheduleModal.classList.remove("hidden");
+      }
+
+      function closeScheduleModal() {
+        scheduleModal.classList.add("hidden");
+      }
+
+      // 入口点击 → 呼出弹窗
+      if (sidebarScheduleBtn) {
+        sidebarScheduleBtn.addEventListener("click", openScheduleModal);
+      }
+
+      // 保存：收集行 → 存档 → 更新摘要 → 关闭 → 刷新看板课表卡片
+      sgSaveBtn.addEventListener("click", function () {
+        saveUserSchedule(collectScheduleRows());
+        updateScheduleSummary();
+        closeScheduleModal();
+        if (typeof refreshDashboardSchedule === "function") refreshDashboardSchedule();  // ★ 看板联动
+      });
+
+      sgSkipBtn.addEventListener("click", closeScheduleModal);
+      scheduleModal.querySelector(".profile-modal-mask").addEventListener("click", closeScheduleModal);
+
+      // 初始化：刷新摘要
+      updateScheduleSummary();
+
+      // ---------- 学习画像配置（随请求发送） ----------
+      // 数据源：弹窗保存的 user_profile（localStorage）
+      function getProfile() {
+        const saved = loadUserProfile();
+        return {
+          goal: saved?.goal || "",
+          subjects: saved?.subjects || [],     // [{subject, examDate}]
+          examDate: saved?.examDate || "",
+          hours: saved?.hours || "",
+          weak: saved?.weak || "",
+        };
+      }
+
+      // 课表文本：读取 localStorage 的 user_schedule 并拼接自然语言（有课才附带）
+      function getScheduleText() {
+        const rows = loadUserSchedule();
+        if (!rows.length) return "";
+        const text = rows.map(function (r) {
+          return r.day + " " + r.start + "-" + r.end + " " + r.course;
+        }).join("；") + "。";
+        return "当前用户的真实课表如下：" + text;
+      }
+
+      // 打卡进度：按天统计当前计划的勾选状态（后端数据感知用）
+      // 格式如：当前已完成：周一全部任务、周二2/3的任务、周三暂未开始。
+      function getProgressData() {
+        const groups = {};
+        taskRows.forEach(function (r) {
+          if (!r.day) return;
+          if (!groups[r.day]) groups[r.day] = { done: 0, total: 0 };
+          groups[r.day].total += 1;
+          if (r.done) groups[r.day].done += 1;
+        });
+        const days = Object.keys(groups);
+        if (days.length === 0) return "";
+        const parts = days.map(function (d) {
+          const g = groups[d];
+          if (g.done === g.total) return d + "全部任务";
+          if (g.done === 0) return d + "暂未开始";
+          return d + g.done + "/" + g.total + "的任务";
+        });
+        return "当前已完成：" + parts.join("、") + "。";
       }
 
       // ---------- 发送流程（SSE 流式调用后端 /api/chat） ----------
@@ -305,15 +1561,23 @@
       // 手机局域网访问时也能自动指向当前主机
       const API_URL = location.origin + "/api/chat";
 
-      async function sendMessage() {
-        const text = input.value.trim();
+      // 发送消息：text 可选（弹窗调用时外部传入）；extra 可选（附加字段如 quiz_subject）
+      async function sendMessage(textOverride, extra) {
+        const text = (textOverride !== undefined ? textOverride : input.value.trim());
         if (!text || busy) return;
 
         busy = true;
         sendBtn.disabled = true;
+
+        // 确保当前会话存在（首次发送自动新建）
+        if (!currentSession()) createSession();
+
         addUserBubble(text);
-        input.value = "";
-        autoGrow();
+        appendToSession("user", text);   // 保存用户消息到 localStorage
+        if (textOverride === undefined) {
+          input.value = "";
+          autoGrow();
+        }
         scrollBottom();
 
         // 先显示 Router Agent 状态行（浅灰色小字）
@@ -326,13 +1590,32 @@
         let finalDone = false;
 
         try {
+          const wc = getWeekCompletion();      // ★ 督学反馈：本周完成率
+          const payload = {
+            message: text,
+            user_id: getUserId(),               // ★ Memory：用户标识
+            completion_done: wc.done,           // ★ 督学反馈
+            completion_total: wc.total,
+            completion_rate: wc.rate,
+            completion: wc.text,
+            profile: getProfile(),
+            schedule: getScheduleText(),        // 课表文本（有课才非空）
+            schedule_rows: loadUserSchedule(),  // 课表行数组（Agent 工具注入用）
+            progress_data: getProgressData(),   // 打卡进度（有勾选才非空）
+          };
+          if (extra && extra.quiz_subject) {
+            payload.quiz_subject = extra.quiz_subject;   // 出题弹窗：指定科目
+          }
+          if (extra && extra.plan_slots) {
+            payload.plan_slots = extra.plan_slots;       // 规划弹窗：勾选的时段列表
+          }
           const resp = await fetch(API_URL, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "Accept": "text/event-stream",
             },
-            body: JSON.stringify({ message: text }),
+            body: JSON.stringify(payload),
           });
 
           if (!resp.ok || !resp.body) {
@@ -377,25 +1660,37 @@
 
               if (eventName === "router") {
                 sawRouter = true;
+                // Agent 自主决策模式：不再展示写死的意图，展示模型的决策状态
                 updateRouterStatus(
-                  "[Router Agent: 意图=" + (payload.intent || "?") +
-                  " → " + (payload.agent || "") + "]"
+                  "[Router Agent: " + (payload.message || (payload.intent ? ("意图=" + payload.intent) : "自主决策")) + "]"
                 );
+              } else if (eventName === "agent_step") {
+                // Agent Loop 步骤流：think / tool / fallback
+                sawTool = true;
+                if (!document.getElementById("toolRow")) addToolStatus();
+                const t = payload.type;
+                if (t === "tool") {
+                  // ★ 高逼格标签：大模型自主决定调用外部工具
+                  renderToolTag(payload.tool || payload.message, payload.ok);
+                } else if (t === "think") {
+                  updateToolStatus("[Agent 思考: " + (payload.message || "") + "]");
+                } else if (t === "fallback") {
+                  updateToolStatus("[Agent] " + (payload.message || ""));
+                } else {
+                  updateToolStatus("[Agent " + (payload.step || "") + "] " + (payload.message || ""));
+                }
               } else if (eventName === "tool") {
                 sawTool = true;
                 if (!document.getElementById("toolRow")) addToolStatus();
-                updateToolStatus("[Tool: " + (payload.message || "正在调取课表...") + "]");
+                updateToolStatus("[Agent 正在自主调用外部工具...] " + (payload.message || "正在感知学习环境..."));
               } else if (eventName === "final") {
                 finalDone = true;
-                // 工具读取完成：更新 Tool 状态行
+                // Agent 决策完成：更新状态行
                 if (sawTool) {
-                  updateToolStatus(
-                    payload.tool === "error"
-                      ? "[Tool: schedule.json 读取失败，已跳过工具数据]"
-                      : "[Tool: 课表数据读取完成]"
-                  );
+                  updateToolStatus("[Agent 决策完成，已生成回复]");
                 }
                 addAiBubble(renderMarkdown(payload.reply || ""));
+                appendToSession("assistant", payload.reply || "");   // 保存 AI 回复
               } else if (eventName === "error") {
                 console.error("[StudyMatrix] 后端返回错误:", payload.error);
                 addAiBubble(
@@ -423,7 +1718,8 @@
         }
       }
 
-      sendBtn.addEventListener("click", sendMessage);
+      // 注意：用包装函数调用，避免把 MouseEvent 当作 textOverride 传入
+      sendBtn.addEventListener("click", function () { sendMessage(); });
       input.addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -431,15 +1727,227 @@
         }
       });
 
-      // ---------- 功能列表：点击自动填入输入框 ----------
-      document.querySelectorAll(".feature-item").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          input.value = btn.dataset.fill;
-          autoGrow();
-          input.focus();
-          // 手机端点击后收起抽屉
-          closeDrawer();
+      // ---------- 规划生成弹窗（任务3）：未来三日时间矩阵 ----------
+      const PLAN_MEMO_KEY = "plan_form_memo";   // localStorage 记忆上次输入
+      const PLAN_WEEKDAY = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+      const PLAN_SLOTS = ["上午", "下午", "晚上"];
+      const planModal = document.getElementById("planModal");
+      const planWeakInput = document.getElementById("planWeak");
+      const planProgressInput = document.getElementById("planProgress");
+      const planMatrixEl = document.getElementById("planMatrix");
+      let planSelectedSlots = [];   // [{date: "10月24日", weekday: "周五", slot: "下午"}]
+
+      function loadPlanMemo() {
+        try {
+          return JSON.parse(localStorage.getItem(PLAN_MEMO_KEY)) || {};
+        } catch (e) { return {}; }
+      }
+
+      // 生成从今天起的未来三天：[{date:"10月24日", weekday:"周五", key:"2026-10-24"}, ...]
+      function buildThreeDays() {
+        const days = [];
+        const now = new Date();
+        for (let i = 0; i < 3; i++) {
+          const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+          days.push({
+            date: (d.getMonth() + 1) + "月" + d.getDate() + "日",
+            weekday: PLAN_WEEKDAY[d.getDay()],
+            key: d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(),
+          });
+        }
+        return days;
+      }
+
+      // 渲染时间矩阵：三列日期 × 三个时段按钮
+      function renderPlanMatrix() {
+        const days = buildThreeDays();
+        planMatrixEl.innerHTML = "";
+
+        days.forEach(function (day) {
+          const col = document.createElement("div");
+          col.className = "pm-day-col";
+
+          const head = document.createElement("div");
+          head.className = "pm-day-head";
+          head.innerHTML = day.date + '<span class="pm-day-name">' + day.weekday + "</span>";
+          col.appendChild(head);
+
+          PLAN_SLOTS.forEach(function (slot) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "pm-slot-btn";
+            btn.textContent = slot;
+            const key = day.key + "|" + slot;
+            // 记忆回显：命中则默认选中
+            if (planSelectedSlots.some(function (s) { return s.key === key; })) {
+              btn.classList.add("selected");
+            }
+            btn.addEventListener("click", function () {
+              const idx = planSelectedSlots.findIndex(function (s) { return s.key === key; });
+              if (idx === -1) {
+                // ★ 范围限制：只允许未来三日内（按钮本身只渲染三天，天然受限）
+                planSelectedSlots.push({ key: key, date: day.date, weekday: day.weekday, slot: slot });
+                btn.classList.add("selected");
+              } else {
+                planSelectedSlots.splice(idx, 1);
+                btn.classList.remove("selected");
+              }
+            });
+            col.appendChild(btn);
+          });
+          planMatrixEl.appendChild(col);
         });
+      }
+
+      function openPlanModal() {
+        // 回显上次输入（薄弱科目 + 进度 + 已勾选时段）
+        const memo = loadPlanMemo();
+        const saved = loadUserProfile();
+        planWeakInput.value = memo.weak || saved?.weak || "";
+        planProgressInput.value = memo.progress || "";
+        planSelectedSlots = Array.isArray(memo.slots) ? memo.slots.slice() : [];
+        renderPlanMatrix();
+        planModal.classList.remove("hidden");
+        planWeakInput.focus();
+      }
+
+      function closePlanModal() {
+        planModal.classList.add("hidden");
+      }
+
+      // 开始生成计划：勾选时段 + 薄弱科目 + 进度 拼成指令 → 自动发送
+      document.getElementById("planSubmitBtn").addEventListener("click", function () {
+        const weak = planWeakInput.value.trim();
+        const progress = planProgressInput.value.trim();
+
+        // 拼接文本：我想在 10月24日 下午、10月25日 上午 进行复习
+        const chosen = planSelectedSlots.slice().sort(function (a, b) {
+          return a.key < b.key ? -1 : 1;
+        });
+        const slotText = chosen.map(function (s) {
+          return s.date + " " + s.slot;
+        }).join("、");
+
+        // 记忆本次输入（含勾选时段），下次打开自动回显
+        try {
+          localStorage.setItem(PLAN_MEMO_KEY, JSON.stringify({
+            weak: weak, progress: progress, slots: planSelectedSlots,
+          }));
+        } catch (e) { /* 忽略 */ }
+
+        closePlanModal();
+        closeDrawer();
+
+        // 拼成指令自动发送（plan_slots 字段供后端强约束）
+        let text = "帮我制定复习计划";
+        if (slotText) {
+          text += "。我想在 " + slotText + " 进行复习";
+        }
+        if (weak) text += "，薄弱科目：" + weak;
+        if (progress) text += "，当前复习进度：" + progress;
+        text += "。请只在这些时段内安排任务，不要超范围排期。";
+        sendMessage(text, { plan_slots: chosen.map(function (s) { return s.date + " " + s.slot; }) });
+      });
+
+      document.getElementById("planCancelBtn").addEventListener("click", closePlanModal);
+      planModal.querySelector(".profile-modal-mask").addEventListener("click", closePlanModal);
+
+      // ---------- 出题测试弹窗（任务4） ----------
+      const quizModal = document.getElementById("quizModal");
+      const quizSubjectListEl = document.getElementById("quizSubjectList");
+      let quizSelectedSubject = "";
+
+      // 提取科目列表：课表课程名 + 当前计划表科目（去重）
+      function getSubjectList() {
+        const subs = [];
+        // 来源1：专属课表中的课程名
+        loadUserSchedule().forEach(function (r) {
+          const name = (r.course || "").trim();
+          if (name && subs.indexOf(name) === -1) subs.push(name);
+        });
+        // 来源2：最近计划表提取的学科名（从 assistant 消息的 Markdown 表首列旁取）
+        const session = currentSession();
+        if (session) {
+          session.messages.forEach(function (m) {
+            if (m.role !== "assistant") return;
+            // 粗提取：匹配 "| 学科名 " 风格的常见科目关键词
+            ["高数", "英语", "数据结构", "操作系统", "计算机网络", "线性代数",
+             "大学物理", "Python程序设计", "政治", "数学"].forEach(function (kw) {
+              if (m.content && m.content.indexOf(kw) !== -1 && subs.indexOf(kw) === -1) {
+                subs.push(kw);
+              }
+            });
+          });
+        }
+        return subs;
+      }
+
+      function renderQuizSubjects() {
+        const subs = getSubjectList();
+        quizSelectedSubject = "";
+        quizSubjectListEl.innerHTML = "";
+
+        if (subs.length === 0) {
+          quizSubjectListEl.innerHTML =
+            '<div class="quiz-empty">暂无科目数据。<br>请先录入专属课表，或先生成一份复习计划。</div>';
+          return;
+        }
+        subs.forEach(function (name) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "quiz-subject-btn";
+          btn.textContent = name;
+          btn.addEventListener("click", function () {
+            quizSelectedSubject = name;
+            quizSubjectListEl.querySelectorAll(".quiz-subject-btn").forEach(function (b) {
+              b.classList.toggle("selected", b === btn);
+            });
+          });
+          quizSubjectListEl.appendChild(btn);
+        });
+      }
+
+      function openQuizModal() {
+        renderQuizSubjects();
+        quizModal.classList.remove("hidden");
+      }
+
+      function closeQuizModal() {
+        quizModal.classList.add("hidden");
+      }
+
+      // 开始测试：把科目发给后端（quiz_subject 字段 + 指令文本）
+      document.getElementById("quizSubmitBtn").addEventListener("click", function () {
+        if (!quizSelectedSubject) {
+          alert("请先选择一个科目");
+          return;
+        }
+        const subject = quizSelectedSubject;
+        closeQuizModal();
+        closeDrawer();
+        sendMessage("出题测试：请针对「" + subject + "」出一道题考考我。", {
+          quiz_subject: subject,
+        });
+      });
+
+      document.getElementById("quizCancelBtn").addEventListener("click", closeQuizModal);
+      quizModal.querySelector(".profile-modal-mask").addEventListener("click", closeQuizModal);
+
+      // ---------- 左侧导航按钮绑定（桌面 + 抽屉两套） ----------
+      [
+        [document.getElementById("sidebarPlanBtn"), openPlanModal],
+        [document.getElementById("sidebarPlanBtnDrawer"), openPlanModal],
+        [document.getElementById("sidebarQuizBtn"), openQuizModal],
+        [document.getElementById("sidebarQuizBtnDrawer"), openQuizModal],
+        [document.getElementById("sidebarProfileBtnDrawer"), openProfileModal],
+        [document.getElementById("sidebarScheduleBtnDrawer"), openScheduleModal],
+      ].forEach(function (pair) {
+        if (pair[0]) {
+          pair[0].addEventListener("click", function () {
+            closeDrawer();     // 手机端先收起抽屉
+            pair[1]();
+          });
+        }
       });
 
       // ---------- 手机端抽屉侧边栏 ----------
@@ -447,6 +1955,7 @@
       const overlay = document.getElementById("overlay");
 
       function openDrawer() {
+        if (typeof closeDash === "function") closeDash();   // ★ 互斥：先收起底部看板
         overlay.classList.remove("hidden");
         drawer.classList.add("open");
       }
@@ -458,6 +1967,473 @@
       document.getElementById("menuBtn").addEventListener("click", openDrawer);
       document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
       overlay.addEventListener("click", closeDrawer);
+
+      // ================== 右侧数据可视化看板 ==================
+
+      // ================= 数据看板：精准统计（今日进度 / 本周时长 / 手动覆盖） =================
+      const DASH_DAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+      const WEEKDAY_MAP = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+      const todayName = (function () { return WEEKDAY_MAP[new Date().getDay()]; })();
+
+      function todayISO() {
+        const d = new Date();
+        return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+      }
+      function tomorrowName() { return WEEKDAY_MAP[(new Date().getDay() + 1) % 7]; }
+
+      // ★ 任务1：解析表格「日期」列 → {weekday, isToday, label}
+      function parseDayInfo(raw) {
+        const t = (raw || "").trim();
+        if (!t) return { weekday: null, isToday: false, label: "" };
+        const now = new Date();
+        if (/今天|今日/.test(t)) return { weekday: todayName, isToday: true, label: t };
+        if (/明天|明日/.test(t)) return { weekday: tomorrowName(), isToday: false, label: t };
+        const wm = t.match(/(?:周|星期)([一二三四五六日天])/);
+        if (wm) {
+          const w = wm[1] === "天" ? "日" : wm[1];
+          const wd = "周" + w;
+          return { weekday: wd, isToday: wd === todayName, label: t };
+        }
+        const dm = t.match(/(\d{1,2})月(\d{1,2})日/);
+        if (dm) {
+          const m = parseInt(dm[1], 10), dd = parseInt(dm[2], 10);
+          const isToday = (m === now.getMonth() + 1 && dd === now.getDate());
+          return { weekday: isToday ? todayName : null, isToday: isToday, label: m + "月" + dd + "日" };
+        }
+        return { weekday: null, isToday: false, label: t };
+      }
+
+      // ★ 任务2：从「任务内容 / 时间段」提取预估时长（分钟），默认 1.5 小时
+      function extractDurationMin(taskText, timeText) {
+        const text = (taskText || "") + " " + (timeText || "");
+        const tm = text.match(/(\d{1,2}):(\d{2})\s*[-–~—至]\s*(\d{1,2}):(\d{2})/);
+        if (tm) {
+          const s = parseInt(tm[1], 10) * 60 + parseInt(tm[2], 10);
+          const e = parseInt(tm[3], 10) * 60 + parseInt(tm[4], 10);
+          const diff = e - s;
+          if (diff > 0 && diff <= 8 * 60) return diff;      // 优先用时间段差值
+        }
+        const mm = text.match(/(\d{1,3})\s*分钟/);
+        if (mm) return Math.max(5, Math.min(480, parseInt(mm[1], 10)));
+        const hm = text.match(/(\d{1,2}(?:\.\d)?)\s*(?:小时|h|H)(?![a-zA-Z])/);
+        if (hm) return Math.max(5, Math.min(480, Math.round(parseFloat(hm[1]) * 60)));
+        return 90;                                          // 默认 1.5 小时
+      }
+
+      // ★ 任务1：今日任务行（仅匹配「今天真实日期 / 星期几」）
+      function todayTaskRows() {
+        return taskRows.filter(function (r) { return r.dayInfo && r.dayInfo.isToday; });
+      }
+
+      // ★ 任务3：手动覆盖（localStorage）
+      const DASH_OVERRIDE_KEY = "studymatrix_dash_override";
+      function loadDashOverride() {
+        try { return JSON.parse(localStorage.getItem(DASH_OVERRIDE_KEY)) || {}; } catch (e) { return {}; }
+      }
+      function saveDashOverride(o) {
+        try { localStorage.setItem(DASH_OVERRIDE_KEY, JSON.stringify(o || {})); } catch (e) {}
+      }
+      function clearDashOverride() {
+        try { localStorage.removeItem(DASH_OVERRIDE_KEY); } catch (e) {}
+      }
+
+      function updateTodayRing() {
+        const ov = loadDashOverride();
+        const rows = todayTaskRows();
+        const total = rows.length;
+        const done = rows.filter(function (r) { return r.done; }).length;
+
+        let pct = total === 0 ? 0 : Math.round((done / total) * 100);
+        let doneShown = done, totalShown = total, manual = false;
+        if (typeof ov.rate === "number" && ov.rate >= 0) {      // 手动完成率覆盖
+          pct = Math.round(Math.max(0, Math.min(100, ov.rate)));
+          doneShown = total > 0 ? Math.round((pct / 100) * total) : done;
+          manual = true;
+        }
+
+        const ring = document.getElementById("todayRing");
+        if (ring) {
+          const deg = Math.round(pct * 3.6);
+          ring.style.background =
+            "conic-gradient(#10b981 0deg " + deg + "deg, #e5e7eb " + deg + "deg 360deg)";
+          ring.classList.toggle("complete", pct === 100);
+          ring.classList.toggle("manual", manual);
+        }
+        const numEl = document.getElementById("ringPercent");
+        if (numEl) numEl.textContent = pct + "%";
+        const doneEl = document.getElementById("statDone");
+        if (doneEl) doneEl.textContent = doneShown;
+        const totalEl = document.getElementById("statTotal");
+        if (totalEl) totalEl.textContent = totalShown;
+        const hint = document.getElementById("ringTodayHint");
+        if (hint) {
+          hint.textContent = manual
+            ? "手动设定完成率"
+            : ("今日 " + todayName + "：" + done + "/" + total + " 项");
+        }
+      }
+
+      // ---------- 任务2：本周学习时长（累加「已勾选」任务时长，无假数据） ----------
+      function updateWeekBars() {
+        const wrap = document.getElementById("weekBars");
+        if (!wrap) return;
+
+        const hours = {};
+        DASH_DAYS.forEach(function (d) { hours[d] = 0; });
+        taskRows.forEach(function (r) {
+          if (!r.done) return;                                  // 只统计已勾选任务
+          const wd = (r.dayInfo && r.dayInfo.weekday) || null;
+          if (!wd || !(wd in hours)) return;                    // 与真实周历对齐
+          hours[wd] += (r.min || 90) / 60;
+        });
+
+        const ov = loadDashOverride();
+        let totalHours = 0;
+        DASH_DAYS.forEach(function (d) { totalHours += hours[d]; });
+
+        const barHours = Object.assign({}, hours);
+        const manual = (typeof ov.hours === "number" && ov.hours >= 0);
+        if (manual) {
+          if (totalHours > 0) {                                 // 手动总量按自动权重分摊
+            const k = ov.hours / totalHours;
+            DASH_DAYS.forEach(function (d) { barHours[d] = hours[d] * k; });
+          } else {
+            DASH_DAYS.forEach(function (d) { barHours[d] = ov.hours / 7; });
+          }
+          totalHours = ov.hours;
+        }
+
+        const maxHours = Math.max(1, ...DASH_DAYS.map(function (d) { return barHours[d]; }));
+
+        wrap.innerHTML = "";
+        DASH_DAYS.forEach(function (d) {
+          const col = document.createElement("div");
+          col.className = "wb-col" + (d === todayName ? " today" : "");
+
+          const track = document.createElement("div");
+          track.className = "wb-bar-track";
+          const bar = document.createElement("div");
+          bar.className = "wb-bar";
+          bar.style.height = Math.round((barHours[d] / maxHours) * 100) + "%";
+          track.appendChild(bar);
+
+          const hr = document.createElement("div");
+          hr.className = "wb-hr";
+          hr.textContent = (Math.round(barHours[d] * 10) / 10) + "h";
+          const day = document.createElement("div");
+          day.className = "wb-day";
+          day.textContent = d;
+
+          col.appendChild(hr);
+          col.appendChild(track);
+          col.appendChild(day);
+          wrap.appendChild(col);
+        });
+
+        const totalEl = document.getElementById("weekTotalHours");
+        if (totalEl) totalEl.textContent = Math.round(totalHours * 10) / 10;
+        const tag = document.getElementById("dashManualTag");
+        if (tag) tag.classList.toggle("hidden", !(manual || (typeof ov.rate === "number")));
+      }
+
+      // ---------- 任务3：手动调整 / 重置数据 ----------
+      function openDashConfig() {
+        const ov = loadDashOverride();
+        const h = document.getElementById("dashCfgHours");
+        const r = document.getElementById("dashCfgRate");
+        if (h) h.value = (typeof ov.hours === "number") ? ov.hours : "";
+        if (r) r.value = (typeof ov.rate === "number") ? ov.rate : "";
+        const m = document.getElementById("dashConfigModal");
+        if (m) m.classList.remove("hidden");
+      }
+      function closeDashConfig() {
+        const m = document.getElementById("dashConfigModal");
+        if (m) m.classList.add("hidden");
+      }
+      function saveDashConfig() {
+        const hEl = document.getElementById("dashCfgHours");
+        const rEl = document.getElementById("dashCfgRate");
+        const hRaw = hEl ? hEl.value : "";
+        const rRaw = rEl ? rEl.value : "";
+        const ov = {};
+        if (String(hRaw).trim() !== "") {
+          const hv = parseFloat(hRaw);
+          if (!isNaN(hv) && hv >= 0) ov.hours = hv;
+        }
+        if (String(rRaw).trim() !== "") {
+          const rv = parseFloat(rRaw);
+          if (!isNaN(rv) && rv >= 0) ov.rate = Math.min(100, rv);
+        }
+        saveDashOverride(ov);
+        closeDashConfig();
+        refreshDashboard();
+      }
+      function resetDashConfig() {
+        clearDashOverride();
+        closeDashConfig();
+        refreshDashboard();
+      }
+
+      // ---------- 任务2：每 1 分钟检查打卡状态变化，动态刷新图表 ----------
+      let dashSig = "";
+      function dashboardSignature() {
+        const rows = taskRows.map(function (r) { return (r.done ? "1" : "0") + (r.min || 0); }).join("|");
+        return rows + "#" + todayISO() + "#" + JSON.stringify(loadDashOverride());
+      }
+      function dashboardTick() {
+        const sig = dashboardSignature();
+        if (sig !== dashSig) { dashSig = sig; refreshDashboard(); }
+      }
+      setInterval(dashboardTick, 60 * 1000);
+      dashboardTick();   // 启动时先同步一次
+
+      // ---------- 任务3：按钮 / 弹窗事件绑定 ----------
+      (function () {
+        const gear = document.getElementById("dashSettingsBtn");
+        if (gear) gear.addEventListener("click", openDashConfig);
+        const modal = document.getElementById("dashConfigModal");
+        if (modal) {
+          const mask = modal.querySelector(".profile-modal-mask");
+          if (mask) mask.addEventListener("click", closeDashConfig);
+        }
+        const saveBtn = document.getElementById("dashCfgSave");
+        if (saveBtn) saveBtn.addEventListener("click", saveDashConfig);
+        const clearBtn = document.getElementById("dashCfgClear");
+        if (clearBtn) clearBtn.addEventListener("click", resetDashConfig);
+        const cancelBtn = document.getElementById("dashCfgCancel");
+        if (cancelBtn) cancelBtn.addEventListener("click", closeDashConfig);
+      })();
+
+      // ---------- 本周课表卡片：读取 localStorage 课程，按天分组 ----------
+      function updateSchedCards() {
+        const wrap = document.getElementById("schedCards");
+        if (!wrap) return;
+        const rows = loadUserSchedule();
+
+        if (!rows.length) {
+          wrap.innerHTML = '<div class="sched-empty">暂未录入课表<br>点击左侧「我的专属课表」配置</div>';
+          return;
+        }
+
+        // 按天分组并按开始时间排序
+        const groups = {};
+        rows.forEach(function (r) {
+          (groups[r.day] = groups[r.day] || []).push(r);
+        });
+
+        wrap.innerHTML = "";
+        DASH_DAYS.forEach(function (d) {
+          if (!groups[d]) return;
+          const g = document.createElement("div");
+          g.className = "sched-day-group";
+
+          const head = document.createElement("div");
+          head.className = "sched-day-head";
+          head.textContent = d + (d === todayName ? " · 今天" : "");
+          g.appendChild(head);
+
+          groups[d]
+            .slice()
+            .sort(function (a, b) { return a.start < b.start ? -1 : 1; })
+            .forEach(function (r) {
+              const card = document.createElement("div");
+              card.className = "sched-course-card";
+              card.innerHTML =
+                '<span class="sc-time">' + escapeHtml(r.start) + "-" + escapeHtml(r.end) + "</span>" +
+                '<span class="sc-name">' + escapeHtml(r.course) + "</span>";
+              g.appendChild(card);
+            });
+          wrap.appendChild(g);
+        });
+      }
+
+      // 看板总刷新（打卡联动入口）
+      function refreshDashboard() {
+        updateTodayRing();
+        updateWeekBars();
+      }
+
+      // 课表保存后刷新看板课表卡片
+      function refreshDashboardSchedule() {
+        updateSchedCards();
+      }
+
+      // ---------- 手机端看板抽屉（<1024px 呼出按钮） ----------
+      const dashPanel = document.getElementById("dashboardPanel");
+      const dashOverlay = document.getElementById("dashOverlay");
+      const dashToggleBtn = document.getElementById("dashToggleBtn");
+
+      function openDash() {
+        if (typeof closeDrawer === "function") closeDrawer();   // ★ 互斥：先收起左侧抽屉
+        dashOverlay.classList.remove("hidden");
+        dashPanel.classList.add("open");
+      }
+      function closeDash() {
+        dashOverlay.classList.add("hidden");
+        dashPanel.classList.remove("open");
+      }
+      if (dashToggleBtn) dashToggleBtn.addEventListener("click", openDash);
+      if (dashOverlay) dashOverlay.addEventListener("click", closeDash);
+      const dashCloseBtn = document.getElementById("dashCloseBtn");
+      if (dashCloseBtn) dashCloseBtn.addEventListener("click", closeDash);
+
+      // ================= Proactive Agent：自主巡航（手动 + 早晚时间点 + 任务积累） =================
+      // 已移除「30 秒首弹」与「每 2 分钟定时弹」；仅保留三类触发：
+      //   1) manual：快捷键 Ctrl+Shift+L / 点击顶部巡航栏
+      //   2) slot  ：每天早晚固定时间点（08:00 早上 / 20:00 晚上）
+      //   3) event ：任务积累未完成（未完成任务数 / 到期复习点 / 连续未打卡）
+      const PROACTIVE_URL = location.origin + "/api/proactive";
+      const PROACTIVE_HEARTBEAT_MS = 60 * 1000;        // 心跳：每分钟检查一次（仅在命中条件时才推送）
+      const PROACTIVE_SLOTS = [                        // 早晚时间点（可自行调整）
+        { key: "morning", hour: 8, minute: 0 },
+        { key: "evening", hour: 20, minute: 0 },
+      ];
+      const SLOT_WINDOW_MIN = 5;                       // 命中窗口（分钟）：[HH:MM, HH:MM+5)
+      const UNDONE_THRESHOLD = 3;                      // 未完成任务积累阈值
+      const BACKLOG_COOLDOWN_MS = 4 * 60 * 60 * 1000;  // 未完成提醒最短间隔
+      let proactiveInFlight = false;                   // ★ 前端防重
+
+      function todayStrProactive() {
+        const d = new Date();
+        return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+      }
+
+      // 今日未完成任务数（用于「任务积累未完成」判定）
+      function getUndoneCount() {
+        try {
+          if (Array.isArray(taskRows) && taskRows.length) {
+            return taskRows.filter(function (r) { return !r.done; }).length;
+          }
+        } catch (e) { /* 忽略 */ }
+        return 0;
+      }
+
+      // 本周计划完成率（督学反馈）：基于最新计划表的打卡状态
+      function getWeekCompletion() {
+        try {
+          const total = Array.isArray(taskRows) ? taskRows.length : 0;
+          if (!total) return { done: 0, total: 0, rate: null, text: "" };
+          const done = taskRows.filter(function (r) { return r.done; }).length;
+          return { done: done, total: total, rate: done / total, text: done + "/" + total };
+        } catch (e) {
+          return { done: 0, total: 0, rate: null, text: "" };
+        }
+      }
+
+      // 强插入"🔔 主动提醒"AI 气泡（不显示用户气泡）
+      function addProactiveBubble(html, label) {
+        const row = document.createElement("div");
+        row.className = "flex gap-3 proactive-row";
+        const tag = "🔔 主动提醒" + (label ? " · " + escapeHtml(label) : "");
+        row.innerHTML =
+          '<div class="ai-avatar proactive-avatar">🔔</div>' +
+          '<div class="ai-bubble md-body proactive-bubble">' +
+          '<span class="proactive-badge">' + tag + '</span>' + html + "</div>";
+        messages.appendChild(row);
+        typesetMath(row.querySelector(".ai-bubble"));   // ★ 渲染 LaTeX 数学公式
+        scrollBottom();
+      }
+
+      // 统一触发入口：opts = { manual, trigger, slot }
+      async function runProactiveCheck(opts) {
+        opts = opts || {};
+        const manual = !!opts.manual;
+        if (proactiveInFlight) return;                 // ★ 防重
+        if (busy && !manual) return;                   // 自动触发不打断用户对话；手动可强制
+        proactiveInFlight = true;
+        try {
+          const wc = getWeekCompletion();                 // ★ 督学反馈：本周完成率
+          const payload = {
+            message: "[系统自主触发] 请检查我的学习状态",
+            trigger: opts.trigger || (manual ? "manual" : "event"),
+            manual: manual,
+            slot: opts.slot || "",
+            user_id: getUserId(),                       // ★ Memory：用户标识
+            completion_done: wc.done,                   // ★ 督学反馈
+            completion_total: wc.total,
+            completion_rate: wc.rate,
+            completion: wc.text,
+            days_since_checkin: getDaysSinceCheckin(),  // 连续未打卡判定
+            undone_count: getUndoneCount(),             // 任务积累未完成判定
+            profile: getProfile(),
+            schedule: getScheduleText(),
+            schedule_rows: loadUserSchedule(),
+            progress_data: getProgressData(),
+          };
+          const resp = await fetch(PROACTIVE_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await resp.json();
+          // 未命中 / 已去重 / 每日超限 -> skip：静默忽略，绝不重试（杜绝死循环）
+          if (!data || !data.reply) { console.log("[Proactive] 跳过:", data && data.reason); return; }
+          if (!currentSession()) createSession();
+          addProactiveBubble(renderMarkdown(data.reply), data.reason_text || "");
+          appendToSession("assistant", data.reply);   // 主动提醒也写入历史会话
+          const last = document.getElementById("cruiseLast");
+          if (last) {
+            last.textContent = "· 最近推送 " + nowTimeStr().slice(11)
+              + (data.trigger ? "（" + data.trigger + "）" : "");
+          }
+          console.log("[Proactive] 推送(" + data.trigger + "):", data.reply);
+        } catch (e) {
+          console.error("[Proactive] 自主巡航失败:", e);
+        } finally {
+          proactiveInFlight = false;   // ★ 无论成功/失败都释放
+        }
+      }
+
+      // 心跳调度：只在「到点」或「任务积累未完成」时才推送，绝不定时无脑弹
+      function proactiveScheduler() {
+        const now = new Date();
+        // 1) 早晚时间点（每天每时段只推一次）
+        for (let i = 0; i < PROACTIVE_SLOTS.length; i++) {
+          const s = PROACTIVE_SLOTS[i];
+          const key = "studymatrix_px_" + s.key + "_" + todayStrProactive();
+          if (localStorage.getItem(key)) continue;
+          const hit = (now.getHours() === s.hour) &&
+                      (now.getMinutes() >= s.minute) &&
+                      (now.getMinutes() < s.minute + SLOT_WINDOW_MIN);
+          if (hit) {
+            localStorage.setItem(key, "1");
+            runProactiveCheck({ trigger: "slot", slot: s.key });
+            return;
+          }
+        }
+        // 2) 任务积累未完成（达阈值 + 冷却满足，才推送）
+        if (getUndoneCount() >= UNDONE_THRESHOLD) {
+          const raw = localStorage.getItem("studymatrix_px_backlog");
+          const lastTs = raw ? parseInt(raw, 10) : 0;
+          if (Date.now() - lastTs >= BACKLOG_COOLDOWN_MS) {
+            localStorage.setItem("studymatrix_px_backlog", String(Date.now()));
+            runProactiveCheck({ trigger: "event" });
+            return;
+          }
+        }
+      }
+      setInterval(proactiveScheduler, PROACTIVE_HEARTBEAT_MS);
+
+      // ★ 快捷键：Ctrl + Shift + L —— 立即手动触发一次自主巡航
+      document.addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "L" || e.key === "l")) {
+          e.preventDefault();
+          runProactiveCheck({ manual: true, trigger: "manual" });
+        }
+      });
+      // 点击顶部「Agent 自主巡航中...」状态栏同样可手动触发
+      (function () {
+        const bar = document.getElementById("cruiseBar");
+        if (bar) {
+          bar.style.cursor = "pointer";
+          bar.title = "点击立即触发（快捷键 Ctrl + Shift + L）｜另有每天 08:00 / 20:00 与任务积累提醒";
+          bar.addEventListener("click", function () { runProactiveCheck({ manual: true, trigger: "manual" }); });
+        }
+      })();
+
+      // 初始渲染看板
+      refreshDashboard();
+      refreshDashboardSchedule();
     })();
   </script>
 </body>

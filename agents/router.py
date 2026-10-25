@@ -1,8 +1,10 @@
 # agents/router.py
 # 路由 Agent：调用 DeepSeek 识别用户意图，将请求分发给对应的处理模块
 #
-#   planner -> 复习/排计划类请求，交给 agents/planner.py
-#   chat    -> 普通闲聊，直接由大模型回复
+#   schedule -> 查课表类请求，直接返回课表（绝不输出复习计划）
+#   quiz     -> 出题测试类请求，交给出题专家
+#   planner  -> 复习/排计划类请求，交给 agents/planner.py
+#   chat     -> 普通闲聊，直接由大模型回复
 
 import os
 
@@ -20,15 +22,16 @@ _client = OpenAI(
 
 # 意图识别提示词：要求模型只输出一个单词，便于解析
 ROUTER_PROMPT = (
-    "你是一个意图分类器。请判断用户消息属于以下哪类意图：\n"
-    "- 如果用户要求制定复习计划、安排学习时间、排课表、做学习规划，"
-    "或者询问空闲时间/课表/什么时间有空，输出单词 planner\n"
-    "- 其他情况（闲聊、提问、闲聊式咨询等），输出单词 chat\n"
+    "你是一个意图分类器。请判断用户消息属于以下哪类意图，只输出对应的单词：\n"
+    "- schedule：用户想看/查询自己的课表、上课安排、这周有什么课、哪天有课\n"
+    "- quiz：用户要求出题、做练习、模拟测试、考考我、刷题\n"
+    "- planner：用户要求制定复习计划、安排学习时间、做学习规划，或询问空闲时间\n"
+    "- chat：其他情况（闲聊、提问、一般咨询、汇报进度等）\n"
     "只输出一个单词，不要有任何其他内容。"
 )
 
-# 合法意图集合
-VALID_INTENTS = {"planner", "chat"}
+# 合法意图集合（匹配优先级：长词先匹配，避免 planner 包含于其他词）
+VALID_INTENTS = ["schedule", "quiz", "planner", "chat"]
 
 
 def _get_client() -> OpenAI:
@@ -64,6 +67,7 @@ def identify_intent(user_message: str) -> str:
         )
         answer = (response.choices[0].message.content or "").strip().lower()
         # 兼容模型偶尔输出的多余内容（如 "planner." / "意图：planner"）
+        # 按优先级匹配（schedule/quiz 在前，防止误判）
         for intent in VALID_INTENTS:
             if intent in answer:
                 return intent

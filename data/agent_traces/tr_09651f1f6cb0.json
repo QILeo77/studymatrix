@@ -1,0 +1,35 @@
+{
+  "trace_id": "tr_09651f1f6cb0",
+  "user_id": "default",
+  "user_message": "我这周都有哪些课？周一和周三分别上什么？",
+  "profile": {
+    "goal": "期末冲刺",
+    "weak": "高数",
+    "subjects": [
+      {
+        "subject": "高数",
+        "examDate": ""
+      }
+    ]
+  },
+  "steps": [
+    {
+      "step": 1,
+      "type": "tool",
+      "tool": "get_schedule",
+      "ok": true
+    }
+  ],
+  "final_output": "你的本周课表：\n\n- **周一**：08:00–09:40 高等数学\n- **周三**：14:00–15:40 数据结构\n\n本周只有这两次课，其余时段都没有课。高数是你的薄弱科目，而且安排在第一节课；建议课后当天就做一次回看巩固。如果您愿意，我也可以帮你把这两次课后的复习安排出来。",
+  "model": "deepseek-chat",
+  "max_steps": 8,
+  "events": [
+    {
+      "step_index": 1,
+      "tool": "get_schedule",
+      "args": {},
+      "result_summary": "{\"success\": true, \"count\": 2, \"source\": \"用户专属课表（前端录入）\", \"courses\": [{\"day\": \"周一\", \"start\": \"08:00\", \"end\": \"09:40\", \"course\": \"高等数学\"}, {\"day\": \"周三\", \"start\": \"14:00\", \"end\": \"15:40\", \"course\": \"数据结构\"}], \"schedule_text\": \"周一 08:00-09:40 高等数学；周三 14:00-15:40 数据结构\", \"note\": \"\"}",
+      "elapsed_ms": 0.0
+    }
+  ]
+}

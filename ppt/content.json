@@ -1,0 +1,93 @@
+{
+  "title": "智学矩阵 StudyMatrix · 项目演示",
+  "theme": "emerald",
+  "lang": "zh",
+  "slides": [
+    {
+      "layout": "cover",
+      "data": {
+        "title": "智学矩阵 StudyMatrix",
+        "subtitle": "多 Agent 智能复习规划助手 · 项目演示初稿",
+        "footer": "Flask + DeepSeek + SSE · 2026年10月"
+      }
+    },
+    {
+      "layout": "content",
+      "data": {
+        "title": "项目定位",
+        "subtitle": "一句话概括",
+        "items": [
+          "面向大学生的智能复习规划助手：对话式输入需求，自动排复习计划",
+          "技术栈：Flask + DeepSeek + SSE 流式推送 + 原生前端（Tailwind + marked.js）",
+          "核心亮点：多 Agent 调度（Router / Planner / Chat）+ 本地课表工具",
+          "已上线公网：Ngrok 固定域名，手机浏览器直接访问"
+        ]
+      }
+    },
+    {
+      "layout": "data",
+      "data": {
+        "title": "核心能力一览",
+        "metrics": [
+          {"label": "Agent 数量", "value": "3 个"},
+          {"label": "本地工具", "value": "课表引擎"},
+          {"label": "公网访问", "value": "已上线"}
+        ],
+        "items": [
+          "Router Agent：DeepSeek 意图识别，plan/chat 双路由，失败自动降级",
+          "Planner Agent：真实时间注入 + 课表空闲时段 → 时间/任务/目标三列表格",
+          "Chat Agent：Markdown 渲染回复，闲聊咨询全覆盖"
+        ]
+      }
+    },
+    {
+      "layout": "timeline",
+      "data": {
+        "title": "一次对话的完整调度链路",
+        "steps": [
+          {"title": "① 用户发送", "desc": "手机/PC 输入需求"},
+          {"title": "② Router", "desc": "意图识别（SSE 灰字提示）"},
+          {"title": "③ Tool", "desc": "读取本地 schedule.json"},
+          {"title": "④ Planner", "desc": "拼入空闲时间调用大模型"},
+          {"title": "⑤ 渲染", "desc": "Markdown 表格 + 打字动画"}
+        ]
+      }
+    },
+    {
+      "layout": "split",
+      "data": {
+        "title": "移动端体验",
+        "subtitle": "响应式设计，手机浏览器自适应",
+        "items": [
+          "侧边栏自动隐藏，主聊天区占满全屏（<768px 断点）",
+          "抽屉式侧边栏：点菜单按钮弹出，历史对话随时切换",
+          "安全区适配：iPhone 刘海屏/手势条不遮挡输入框",
+          "Markdown 表格横向滚动，触屏操作友好",
+          "实时时钟 + 绿色呼吸灯：'活'的监控台效果"
+        ]
+      }
+    },
+    {
+      "layout": "comparison",
+      "data": {
+        "title": "多 Agent 调度 vs 传统单模型",
+        "left": {
+          "title": "传统单模型",
+          "items": ["不知道今天日期，乱编时间", "课表全靠用户口述", "一次性返回，无过程反馈"]
+        },
+        "right": {
+          "title": "智学矩阵多 Agent",
+          "items": ["系统环境信息：分钟级真实时间注入", "本地课表工具自动读取空闲时段", "SSE 流式：Router/Tool 状态实时可见"]
+        }
+      }
+    },
+    {
+      "layout": "end",
+      "data": {
+        "title": "谢谢观看",
+        "subtitle": "扫码/链接体验：dealt-sworn-barrack.ngrok-free.dev",
+        "footer": "Q&A · 智学矩阵 StudyMatrix"
+      }
+    }
+  ]
+}

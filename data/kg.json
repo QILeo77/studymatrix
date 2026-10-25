@@ -1,0 +1,113 @@
+{
+  "note": "StudyMatrix 知识图谱（Knowledge Graph）：节点=知识点，边=关联关系（prerequisite 表示 from 是 to 的前置知识）。供 Tutor Agent 跨节点出题使用。",
+  "version": 1,
+  "subjects": {
+    "高数": {
+      "aliases": ["高等数学", "微积分"],
+      "nodes": [
+        {"id": "function_limit", "name": "函数与极限", "chapter": "第一章"},
+        {"id": "derivative", "name": "导数与微分", "chapter": "第二章"},
+        {"id": "mean_value", "name": "微分中值定理", "chapter": "第三章"},
+        {"id": "derivative_app", "name": "导数的应用", "chapter": "第三章"},
+        {"id": "indefinite_integral", "name": "不定积分", "chapter": "第四章"},
+        {"id": "definite_integral", "name": "定积分", "chapter": "第五章"},
+        {"id": "series", "name": "级数", "chapter": "第十二章"},
+        {"id": "differential_eq", "name": "微分方程", "chapter": "第七章"},
+        {"id": "multivariable", "name": "多元函数微分", "chapter": "第八章"},
+        {"id": "double_integral", "name": "重积分", "chapter": "第九章"}
+      ],
+      "edges": [
+        {"from": "function_limit", "to": "derivative", "type": "prerequisite"},
+        {"from": "derivative", "to": "mean_value", "type": "prerequisite"},
+        {"from": "mean_value", "to": "derivative_app", "type": "prerequisite"},
+        {"from": "derivative", "to": "indefinite_integral", "type": "prerequisite"},
+        {"from": "indefinite_integral", "to": "definite_integral", "type": "prerequisite"},
+        {"from": "function_limit", "to": "series", "type": "prerequisite"},
+        {"from": "definite_integral", "to": "series", "type": "prerequisite"},
+        {"from": "derivative", "to": "multivariable", "type": "prerequisite"},
+        {"from": "definite_integral", "to": "double_integral", "type": "prerequisite"},
+        {"from": "definite_integral", "to": "differential_eq", "type": "prerequisite"}
+      ]
+    },
+    "线性代数": {
+      "aliases": ["线代"],
+      "nodes": [
+        {"id": "determinant", "name": "行列式", "chapter": "第一章"},
+        {"id": "matrix", "name": "矩阵", "chapter": "第二章"},
+        {"id": "vector_group", "name": "向量组的线性相关性", "chapter": "第三章"},
+        {"id": "linear_equations", "name": "线性方程组", "chapter": "第四章"},
+        {"id": "eigen", "name": "特征值与特征向量", "chapter": "第五章"},
+        {"id": "quadratic_form", "name": "二次型", "chapter": "第六章"}
+      ],
+      "edges": [
+        {"from": "determinant", "to": "matrix", "type": "prerequisite"},
+        {"from": "matrix", "to": "vector_group", "type": "prerequisite"},
+        {"from": "vector_group", "to": "linear_equations", "type": "prerequisite"},
+        {"from": "matrix", "to": "eigen", "type": "prerequisite"},
+        {"from": "eigen", "to": "quadratic_form", "type": "prerequisite"}
+      ]
+    },
+    "数据结构": {
+      "aliases": ["数据结构与算法", "DS"],
+      "nodes": [
+        {"id": "linear_list", "name": "线性表", "chapter": "第二章"},
+        {"id": "linked_list", "name": "链表", "chapter": "第二章"},
+        {"id": "stack_queue", "name": "栈与队列", "chapter": "第三章"},
+        {"id": "tree", "name": "树与二叉树", "chapter": "第六章"},
+        {"id": "tree_traversal", "name": "二叉树遍历", "chapter": "第六章"},
+        {"id": "graph", "name": "图", "chapter": "第七章"},
+        {"id": "graph_search", "name": "图的遍历（BFS/DFS）", "chapter": "第七章"},
+        {"id": "search", "name": "查找", "chapter": "第八章"},
+        {"id": "hash", "name": "哈希表", "chapter": "第八章"},
+        {"id": "sort", "name": "排序", "chapter": "第九章"}
+      ],
+      "edges": [
+        {"from": "linear_list", "to": "linked_list", "type": "prerequisite"},
+        {"from": "linear_list", "to": "stack_queue", "type": "prerequisite"},
+        {"from": "linked_list", "to": "tree", "type": "prerequisite"},
+        {"from": "tree", "to": "tree_traversal", "type": "prerequisite"},
+        {"from": "stack_queue", "to": "graph_search", "type": "prerequisite"},
+        {"from": "tree", "to": "graph", "type": "prerequisite"},
+        {"from": "graph", "to": "graph_search", "type": "prerequisite"},
+        {"from": "linear_list", "to": "search", "type": "prerequisite"},
+        {"from": "search", "to": "hash", "type": "prerequisite"},
+        {"from": "search", "to": "sort", "type": "prerequisite"},
+        {"from": "tree_traversal", "to": "sort", "type": "prerequisite"}
+      ]
+    },
+    "英语": {
+      "aliases": ["大学英语"],
+      "nodes": [
+        {"id": "vocabulary", "name": "核心词汇", "chapter": "基础"},
+        {"id": "grammar", "name": "语法体系", "chapter": "基础"},
+        {"id": "long_sentence", "name": "长难句分析", "chapter": "阅读"},
+        {"id": "reading", "name": "阅读理解", "chapter": "阅读"},
+        {"id": "translation", "name": "翻译", "chapter": "翻译"},
+        {"id": "writing", "name": "写作", "chapter": "写作"}
+      ],
+      "edges": [
+        {"from": "vocabulary", "to": "long_sentence", "type": "prerequisite"},
+        {"from": "grammar", "to": "long_sentence", "type": "prerequisite"},
+        {"from": "long_sentence", "to": "reading", "type": "prerequisite"},
+        {"from": "reading", "to": "translation", "type": "prerequisite"},
+        {"from": "translation", "to": "writing", "type": "prerequisite"}
+      ]
+    },
+    "计算机网络": {
+      "aliases": ["计网"],
+      "nodes": [
+        {"id": "physical", "name": "物理层", "chapter": "第一章"},
+        {"id": "link", "name": "数据链路层", "chapter": "第二章"},
+        {"id": "network", "name": "网络层", "chapter": "第三章"},
+        {"id": "transport", "name": "传输层", "chapter": "第四章"},
+        {"id": "application", "name": "应用层", "chapter": "第五章"}
+      ],
+      "edges": [
+        {"from": "physical", "to": "link", "type": "prerequisite"},
+        {"from": "link", "to": "network", "type": "prerequisite"},
+        {"from": "network", "to": "transport", "type": "prerequisite"},
+        {"from": "transport", "to": "application", "type": "prerequisite"}
+      ]
+    }
+  }
+}

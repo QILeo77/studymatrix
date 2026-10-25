@@ -17,3 +17,16 @@ server_err.log
 _opencode*
 gs*.txt
 staged_list.txt
+
+# 本地隧道配置与日志（ngrok.yml 含 authtoken，切勿入库！）
+ngrok.yml
+ngrok*.log
+*.log
+
+# SQLite 运行时产物（表结构由 agents/storage.py 的 init_db() 自动创建并导入种子）
+data/app.db
+data/app.db-shm
+data/app.db-wal
+
+# 工具/编辑器
+.opencode/
