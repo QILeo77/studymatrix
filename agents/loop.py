@@ -30,7 +30,7 @@ CONSECUTIVE_FAIL_LIMIT = 2         # 连续工具失败降级阈值
 def run_agent(user_message: str, profile: dict = None, schedule_text: str = "",
               extra_prompt: str = "", user_schedule=None, progress_data: str = "",
               user_id: str = "", completion_rate=None,
-              completion_done=None, completion_total=None):
+              completion_done=None, completion_total=None, recall_score=None):
     """Agent 主循环（生成器）：逐步 yield 事件，最终返回 final 文本
 
     Args:
@@ -39,6 +39,7 @@ def run_agent(user_message: str, profile: dict = None, schedule_text: str = "",
         progress_data: 打卡进度文本（工具上下文注入，供 generate_plan 参考）
         user_id: 用户标识（写入 agent_traces 表用）
         completion_rate / completion_done / completion_total: 本周计划完成率（督学反馈）
+        recall_score: 服务端正则解析的记忆自评 0-5（直通 generate_plan，模型漏传时兜底）
 
     yield 事件格式:
         {"phase": "think",  "step": n, "content": "模型思考摘要"}
@@ -57,6 +58,8 @@ def run_agent(user_message: str, profile: dict = None, schedule_text: str = "",
         "completion_rate": completion_rate,
         "completion_done": completion_done,
         "completion_total": completion_total,
+        # SM-2：服务端解析的记忆自评（供 generate_plan 兜底使用）
+        "recall_score": recall_score,
     })
     system_prompt = build_agent_system_prompt(profile or {}, schedule_text=schedule_text)
     if extra_prompt:
