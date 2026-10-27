@@ -26,9 +26,11 @@ from agents.kg import build_kg_context, list_subjects as kg_list_subjects
 from agents.loop import run_agent
 from agents.memory import build_memory_prompt, load_recent_memory, save_memory
 from agents.planner import make_plan
+from agents import plan_store
+from agents import review as review_engine
 from agents.prompts import (build_tutor_feedback_prompt,
                             TUTOR_LOW_THRESHOLD, TUTOR_HIGH_THRESHOLD)
-from agents.storage import init_db
+from agents.storage import init_db, query_one
 from agents.tools_registry import tool_query_due_reviews
 
 init_db()   # 初始化 SQLite（data/app.db）表结构，幂等
@@ -533,7 +535,8 @@ def chat():
                                    progress_data=progress_data, user_id=user_id,
                                    completion_rate=completion_rate,
                                    completion_done=completion_done,
-                                   completion_total=completion_total):
+                                   completion_total=completion_total,
+                                   recall_score=recall_score):
                 phase = event.get("phase")
 
                 if phase == "think":
@@ -952,6 +955,196 @@ def kg_view():
         "successors": [s["name"] for s in ctx.get("successors", [])],
         "kg_text": ctx.get("text", ""),
     })
+
+
+# ================= 遗忘刺客核心 API（P0 落库版） =================
+# 复习 Agent（出刺）：知识点登记 / 今日必刺 / 记忆自评
+# 排程 Agent（踩点）：计划条目查询 / 打卡 / 本周完成率（SQL 统计）
+# Tutor Agent（出题）：作答判分回写 quiz_log
+
+@app.route("/api/review/register", methods=["POST"])
+def review_register():
+    """登记知识点 → 生成 5 档艾宾浩斯复习计划
+
+    请求体: {"user_id": str?, "subject": str, "content": str, "first_learn_date": "YYYY-MM-DD"?}
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = (data.get("user_id") or "").strip() or "default"
+    subject = (data.get("subject") or "").strip()
+    content = (data.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "content（知识点内容）不能为空"}), 400
+    if not subject:
+        subject = "综合"
+    rec = review_engine.register_kp(
+        user_id, subject, content,
+        first_learn_date=(data.get("first_learn_date") or ""),
+    )
+    if "error" in rec:
+        return jsonify({"error": rec["error"]}), 400
+    return jsonify({"ok": True, **rec})
+
+
+@app.route("/api/review/targets", methods=["GET"])
+def review_targets():
+    """今日必刺清单：?user_id=&days_ahead=0（截至今天/未来 N 天）"""
+    user_id = (request.args.get("user_id") or "").strip() or "default"
+    try:
+        days_ahead = int(request.args.get("days_ahead") or 0)
+    except (TypeError, ValueError):
+        days_ahead = 0
+    targets = review_engine.daily_targets(user_id, days_ahead)
+    return jsonify({"user_id": user_id, "count": len(targets), "targets": targets})
+
+
+@app.route("/api/review/score", methods=["POST"])
+def review_score():
+    """提交记忆自评（1~5）→ SM-2 真实算法动态调整下次出刺日期
+
+    请求体: {"user_id": str?, "subject": str, "content": str, "memory_score": int}
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = (data.get("user_id") or "").strip() or "default"
+    subject = (data.get("subject") or "").strip()
+    content = (data.get("content") or "").strip()
+    try:
+        score = int(data.get("memory_score"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "memory_score 必须是 1~5 整数"}), 400
+    result = review_engine.submit_score(user_id, subject, content, score)
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 404
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/api/review/kps", methods=["GET"])
+def review_kps():
+    """列出某用户全部知识点（看板/调试）：?user_id=&limit=50"""
+    user_id = (request.args.get("user_id") or "").strip() or "default"
+    try:
+        limit = int(request.args.get("limit") or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    return jsonify({"user_id": user_id, "kps": review_engine.list_kps(user_id, limit)})
+
+
+@app.route("/api/plan/items", methods=["GET"])
+def plan_items():
+    """最近计划条目（结构化 plan_item 表）：?user_id=&limit=50"""
+    user_id = (request.args.get("user_id") or "").strip() or "default"
+    try:
+        limit = int(request.args.get("limit") or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    return jsonify({"user_id": user_id,
+                    "items": plan_store.list_recent_items(user_id, limit)})
+
+
+@app.route("/api/plan/check", methods=["POST"])
+def plan_check():
+    """计划打卡：更新 plan_item 状态（督学数据来源）
+
+    请求体: {"plan_item_id": int, "status": 0|1|2, "user_id": str?}
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        item_id = int(data.get("plan_item_id"))
+        status = int(data.get("status"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "plan_item_id / status 必须是整数"}), 400
+    result = plan_store.mark_plan_item(item_id, status, (data.get("user_id") or "").strip())
+    if "error" in result:
+        return jsonify({"error": result["error"]}), 400
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/api/plan/completion", methods=["GET"])
+def plan_completion():
+    """本周计划完成率（SQL 统计）：?user_id= → {done, total, rate, text}"""
+    user_id = (request.args.get("user_id") or "").strip() or "default"
+    return jsonify(plan_store.week_completion(user_id))
+
+
+@app.route("/api/quiz/answer", methods=["POST"])
+def quiz_answer():
+    """出题-判题闭环：提交作答 → 大模型判分 → 回写 quiz_log
+
+    请求体: {"quiz_id": int?, "user_id": str?, "subject": str?, "answer": str}
+    quiz_id 缺省时取该用户最近一道未作答题目。
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = (data.get("user_id") or "").strip() or "default"
+    answer = (data.get("answer") or "").strip()
+    if not answer:
+        return jsonify({"error": "answer（作答内容）不能为空"}), 400
+    quiz_id = data.get("quiz_id")
+    row = None
+    if quiz_id is not None:
+        try:
+            row = query_one(
+                "SELECT * FROM quiz_log WHERE id = ? AND user_id = ?",
+                (int(quiz_id), user_id),
+            )
+        except (TypeError, ValueError):
+            row = None
+    if row is None:
+        row = query_one(
+            "SELECT * FROM quiz_log WHERE user_id = ? AND answer IS NULL "
+            "ORDER BY id DESC LIMIT 1", (user_id,),
+        )
+    if row is None:
+        return jsonify({"error": "没有找到待作答的题目，请先出题"}), 404
+
+    if not DEEPSEEK_API_KEY:
+        return jsonify({"error": "服务端未配置 DEEPSEEK_API_KEY"}), 400
+
+    try:
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system",
+                 "content": "你是「遗忘刺客」判题专家。根据题目与用户作答判定对错。"
+                            "题目在作答后通常附有「考点/答题要点」行，请以其为判定标准。"
+                            "严格输出 JSON：{\"correct\": true|false, \"comment\": \"点评（80字内，"
+                            "指出对错、考点、改进建议）\"}，不要输出其他内容。"},
+                {"role": "user",
+                 "content": f"【题目】\n{row['question']}\n\n【用户作答】\n{answer}"},
+            ],
+            stream=False,
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        m = re.search(r"\{.*\}", raw, re.S)
+        verdict = json.loads(m.group(0)) if m else {}
+        correct = bool(verdict.get("correct", False))
+        comment = (verdict.get("comment") or "").strip()
+    except Exception as e:
+        return jsonify({"error": f"判题失败: {e}"}), 500
+
+    from agents.storage import execute as _execute
+    _execute("UPDATE quiz_log SET answer = ?, correct = ? WHERE id = ?",
+             (answer[:2000], 1 if correct else 0, row["id"]))
+    return jsonify({
+        "ok": True, "quiz_id": row["id"], "subject": row["subject"],
+        "correct": correct, "comment": comment,
+    })
+
+
+@app.route("/api/quiz/history", methods=["GET"])
+def quiz_history():
+    """出题-判题历史：?user_id=&limit=20"""
+    user_id = (request.args.get("user_id") or "").strip() or "default"
+    try:
+        limit = int(request.args.get("limit") or 20)
+    except (TypeError, ValueError):
+        limit = 20
+    from agents.storage import query_all as _query_all
+    rows = _query_all(
+        "SELECT id, subject, topic, question, answer, correct, created_at "
+        "FROM quiz_log WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit),
+    )
+    return jsonify({"user_id": user_id,
+                    "records": [dict(r) for r in rows]})
 
 
 if __name__ == "__main__":

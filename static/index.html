@@ -21,6 +21,10 @@
        https://registry.npmmirror.com/katex/0.16.11/files/dist/katex.min.js
        https://registry.npmmirror.com/katex/0.16.11/files/dist/contrib/auto-render.min.js -->
 
+  <!-- ★ ECharts：数据看板可视化（本周学习时长柱状图 / 每日完成量图） -->
+  <script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.5.1/echarts.min.js"></script>
+  <!-- 备选源：https://registry.npmmirror.com/echarts/5.5.1/files/dist/echarts.min.js -->
+
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body class="bg-white text-gray-900 antialiased">
@@ -245,6 +249,28 @@
 
           <button id="sgAddRowBtn" class="pm-add-subject-btn" type="button">+ 添加其他课程</button>
 
+          <!-- ★ 批量导入：粘贴文本一键解析（教务系统复制/CSV/自然段） -->
+          <button id="sgImportBtn" class="pm-add-subject-btn" type="button"
+                  style="margin-top:8px;color:#0e7490;border-color:#67e8f9;">
+            📥 批量导入课表（粘贴文本）
+          </button>
+          <div id="sgImportArea" class="hidden" style="margin-top:8px;">
+            <textarea id="sgImportText" rows="6"
+              style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;
+                     padding:8px 10px;font-size:12px;line-height:1.6;resize:vertical;font-family:inherit;
+                     background:#f8fafc;color:#0f172a;"
+              placeholder="支持三种格式（可混合）：&#10;&#10;① 教务系统式：周一 08:00-09:40 高等数学&#10;② CSV/制表符：周一,08:00,09:40,高等数学&#10;③ 节次式：周一 第1-2节 高等数学（1-2 节=08:00-09:40）&#10;&#10;每行一门课，粘贴后点「解析导入」"></textarea>
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+              <button id="sgImportParseBtn" type="button"
+                      style="padding:6px 14px;border:none;border-radius:8px;background:#0891b2;color:#fff;
+                             font-size:12px;cursor:pointer;">解析导入</button>
+              <button id="sgImportCancelBtn" type="button"
+                      style="padding:6px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;
+                             color:#475569;font-size:12px;cursor:pointer;">收起</button>
+              <span id="sgImportHint" style="font-size:11px;color:#64748b;"></span>
+            </div>
+          </div>
+
           <button id="sgSaveBtn" class="pm-save-btn">保存我的课表</button>
           <button id="sgSkipBtn" class="pm-skip-btn">取消</button>
         </div>
@@ -439,13 +465,20 @@
           <div id="ringTodayHint" class="ring-today-hint">今日 -</div>
         </div>
 
-        <!-- 组件二：本周学习时长统计 -->
+        <!-- 组件二：本周学习时长统计（ECharts 柱状图，加载失败自动回退 CSS 柱条） -->
         <div class="dash-card">
           <div class="dash-card-title">📊 本周学习时长</div>
           <div class="week-bars" id="weekBars">
-            <!-- 7 根柱条由 JS 渲染：周一~周日 -->
+            <!-- ECharts 容器 / 7 根柱条由 JS 渲染：周一~周日 -->
           </div>
           <div class="week-total">本周合计 <b id="weekTotalHours">0</b> 小时</div>
+        </div>
+
+        <!-- ★ 组件四：每日完成任务量（ECharts 折线柱混合图） -->
+        <div class="dash-card">
+          <div class="dash-card-title">✅ 每日完成 / 计划任务量</div>
+          <div id="dailyDoneChart" style="width:100%;height:170px;"></div>
+          <div class="week-total" id="dailyDoneHint" style="margin-top:4px;">本周完成 0 / 0 项</div>
         </div>
 
         <!-- 组件三：我的本周课表 -->
@@ -1717,6 +1750,143 @@
         return rows;
       }
 
+      // ================= ★ 批量导入课表（粘贴文本解析） =================
+      // 节次映射：第 N 节 → 开始时间（与常见大学作息对齐，每节 45 分钟）
+      const SLOT_START = {
+        1: "08:00", 2: "08:55", 3: "10:00", 4: "10:55", 5: "14:00", 6: "14:55",
+        7: "16:00", 8: "16:55", 9: "19:00", 10: "19:55", 11: "21:00", 12: "21:55",
+      };
+      // 每节结束 = 下节开始；末节（12）结束 22:45
+      function slotEnd(n) {
+        return SLOT_START[n + 1] || "22:45";
+      }
+      const DAY_ALIAS = {
+        "周一": "周一", "周二": "周二", "周三": "周三", "周四": "周四", "周五": "周五",
+        "周六": "周六", "周日": "周日", "星期一": "周一", "星期二": "周二", "星期三": "周三",
+        "星期四": "周四", "星期五": "周五", "星期六": "周六", "星期日": "周日", "星期天": "周日",
+        "一": "周一", "二": "周二", "三": "周三", "四": "周四", "五": "周五", "六": "周六",
+        "日": "周日", "天": "周日",
+      };
+      function normDay(s) {
+        s = (s || "").trim();
+        return DAY_ALIAS[s] || null;
+      }
+
+      // 解析单行文本 → {day,start,end,course} 或 null
+      // 支持：①教务式「周一 08:00-09:40 高等数学」②CSV「周一,08:00,09:40,高等数学」
+      //      ③节次式「周一 第1-2节 高等数学」「周一 1-2节 高数」
+      function parseScheduleLine(line) {
+        const t = (line || "").trim().replace(/，/g, ",").replace(/\t/g, ",");
+        if (!t || /^(#|\/\/)/.test(t)) return null;
+
+        // --- 先分离星期 ---
+        let day = null, rest = t;
+        const dayMatch = rest.match(/^(?:星期|周)\s*([一二三四五六日天])/);
+        if (dayMatch) {
+          day = normDay("周" + dayMatch[1]);
+          rest = rest.slice(dayMatch[0].length).trim().replace(/^[，,、\s]+/, "");
+        } else if (/^[一二三四五六日天](?:\s|,|，|$)/.test(rest)) {
+          day = normDay(rest[0]);
+          rest = rest.slice(1).replace(/^[，,、\s]+/, "");
+        }
+        if (!day) return null;
+
+        // --- 节次式：第1-2节 / 1-2节 / 第1~2节 ---
+        const slotMatch = rest.match(/第?\s*(\d{1,2})\s*[-–—~～至]\s*(\d{1,2})\s*节?/);
+        // --- 时间段式：08:00-09:40 / 08:00~09:40 / 8:00-9:40 ---
+        const timeMatch = rest.match(/(\d{1,2}):(\d{2})\s*[-–—~～至]\s*(\d{1,2}):(\d{2})/);
+
+        let start = "", end = "";
+        if (timeMatch) {
+          start = timeMatch[1].padStart(2, "0") + ":" + timeMatch[2];
+          end = timeMatch[3].padStart(2, "0") + ":" + timeMatch[4];
+          rest = rest.replace(timeMatch[0], " ");
+        } else if (slotMatch) {
+          const s1 = parseInt(slotMatch[1], 10), s2 = parseInt(slotMatch[2], 10);
+          if (SLOT_START[s1] && s2 >= s1 && s2 <= 12) {
+            start = SLOT_START[s1];
+            end = slotEnd(s2);
+            rest = rest.replace(slotMatch[0], " ");
+          } else {
+            return null;
+          }
+        } else {
+          return null;
+        }
+
+        // --- 课程名：剩余文本去掉分隔符 ---
+        let course = rest.replace(/[,，、|]+/g, " ").replace(/\s+/g, " ").trim();
+        // CSV 情况：course 可能已被逗号切开（周一,08:00,09:40,高数 → 时间替换后剩余「 高数」）
+        if (!course) {
+          const parts = t.split(/[,，]/).map(function (x) { return x.trim(); });
+          // 取时间/节次之后的最后一个非空段
+          for (let i = parts.length - 1; i >= 0; i--) {
+            const p = parts[i];
+            if (p && !/^(?:星期|周)?[一二三四五六日天]$/.test(p) && !/\d/.test(p)) { course = p; break; }
+          }
+        }
+        if (!course) course = "课程";
+        if (course.length > 15) course = course.slice(0, 15);
+
+        return { day: day, start: start, end: end, course: course };
+      }
+
+      // 解析多行文本 → [{day,start,end,course}]（跳过无法识别的行并计数）
+      function parseScheduleText(text) {
+        const rows = [];
+        let failed = 0;
+        (text || "").split(/\r?\n/).forEach(function (line) {
+          const s = line.trim();
+          if (!s) return;
+          const r = parseScheduleLine(s);
+          if (r) rows.push(r); else failed++;
+        });
+        return { rows: rows, failed: failed };
+      }
+
+      // 批量导入 UI 绑定
+      (function () {
+        const importBtn = document.getElementById("sgImportBtn");
+        const importArea = document.getElementById("sgImportArea");
+        const importText = document.getElementById("sgImportText");
+        const parseBtn = document.getElementById("sgImportParseBtn");
+        const cancelBtn = document.getElementById("sgImportCancelBtn");
+        const hintEl = document.getElementById("sgImportHint");
+        if (!importBtn || !importArea) return;
+
+        importBtn.addEventListener("click", function () {
+          importArea.classList.toggle("hidden");
+          if (!importArea.classList.contains("hidden") && importText) importText.focus();
+        });
+        if (cancelBtn) cancelBtn.addEventListener("click", function () {
+          importArea.classList.add("hidden");
+        });
+        if (parseBtn) parseBtn.addEventListener("click", function () {
+          const result = parseScheduleText(importText ? importText.value : "");
+          const ok = result.rows.length;
+          const bad = result.failed;
+          if (!ok) {
+            if (hintEl) {
+              hintEl.textContent = "未识别到任何课程行，请检查格式（示例见输入框占位符）";
+              hintEl.style.color = "#dc2626";
+            }
+            return;
+          }
+          // 解析成功：追加渲染为新行（不清空已有人工行，导入后可继续微调）
+          result.rows.forEach(function (it, i) {
+            addScheduleRow(it, true);
+          });
+          if (hintEl) {
+            hintEl.textContent = "✅ 已解析 " + ok + " 门课程" +
+              (bad ? "（" + bad + " 行无法识别已跳过）" : "") + "，请核对后点「保存我的课表」";
+            hintEl.style.color = "#059669";
+          }
+          if (importText) importText.value = "";
+          scheduleRowsEl.lastElementChild &&
+            scheduleRowsEl.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+      })();
+
       // 渲染行列表（默认一行；有存档则回填）
       function renderScheduleRows(rows) {
         scheduleRowsEl.innerHTML = "";
@@ -2349,6 +2519,20 @@
       }
 
       // ---------- 任务2：本周学习时长（累加「已勾选」任务时长，无假数据） ----------
+      // ★ ECharts 升级：优先用 ECharts 柱状图渲染；CDN 加载失败自动回退原 CSS 柱条
+      let weekChart = null;
+      function ensureWeekChart() {
+        if (!window.echarts) return null;
+        const wrap = document.getElementById("weekBars");
+        if (!wrap) return null;
+        if (!weekChart) {
+          wrap.innerHTML = "";
+          weekChart = window.echarts.init(wrap);
+          weekChart.resize({ width: "auto", height: 170 });
+        }
+        return weekChart;
+      }
+
       function updateWeekBars() {
         const wrap = document.getElementById("weekBars");
         if (!wrap) return;
@@ -2380,6 +2564,62 @@
           totalHours = ov.hours;
         }
 
+        // ---- ECharts 渲染路径 ----
+        const chart = ensureWeekChart();
+        if (chart) {
+          const vals = DASH_DAYS.map(function (d) {
+            return Math.round(barHours[d] * 10) / 10;
+          });
+          const maxVal = Math.max(1, Math.max.apply(null, vals));
+          chart.setOption({
+            grid: { left: 34, right: 8, top: 18, bottom: 22 },
+            tooltip: {
+              trigger: "axis",
+              formatter: function (ps) {
+                const p = ps[0];
+                return p.name + "：" + (Math.round(p.value * 10) / 10) + " 小时";
+              },
+              textStyle: { fontSize: 11 },
+            },
+            xAxis: {
+              type: "category",
+              data: DASH_DAYS,
+              axisLabel: { fontSize: 10, interval: 0 },
+              axisTick: { show: false },
+            },
+            yAxis: {
+              type: "value",
+              name: "小时",
+              nameTextStyle: { fontSize: 9 },
+              axisLabel: { fontSize: 9 },
+              splitLine: { lineStyle: { type: "dashed", color: "#e2e8f0" } },
+            },
+            series: [{
+              type: "bar",
+              data: vals.map(function (v, i) {
+                return {
+                  value: v,
+                  itemStyle: {
+                    color: DASH_DAYS[i] === todayName ? "#0891b2" : "#67e8f9",
+                    borderRadius: [4, 4, 0, 0],
+                  },
+                };
+              }),
+              barWidth: "52%",
+              label: {
+                show: true, position: "top", fontSize: 9, color: "#475569",
+                formatter: function (p) { return p.value ? String(Math.round(p.value * 10) / 10) : ""; },
+              },
+            }],
+          }, true);
+          const totalEl = document.getElementById("weekTotalHours");
+          if (totalEl) totalEl.textContent = Math.round(totalHours * 10) / 10;
+          const tag = document.getElementById("dashManualTag");
+          if (tag) tag.classList.toggle("hidden", !(manual || (typeof ov.rate === "number")));
+          return;
+        }
+
+        // ---- CSS 回退路径（ECharts 未加载） ----
         const maxHours = Math.max(1, ...DASH_DAYS.map(function (d) { return barHours[d]; }));
 
         wrap.innerHTML = "";
@@ -2407,10 +2647,80 @@
           wrap.appendChild(col);
         });
 
-        const totalEl = document.getElementById("weekTotalHours");
-        if (totalEl) totalEl.textContent = Math.round(totalHours * 10) / 10;
-        const tag = document.getElementById("dashManualTag");
-        if (tag) tag.classList.toggle("hidden", !(manual || (typeof ov.rate === "number")));
+        const totalEl2 = document.getElementById("weekTotalHours");
+        if (totalEl2) totalEl2.textContent = Math.round(totalHours * 10) / 10;
+        const tag2 = document.getElementById("dashManualTag");
+        if (tag2) tag2.classList.toggle("hidden", !(manual || (typeof ov.rate === "number")));
+      }
+
+      // ---------- ★ 组件四：每日完成 / 计划任务量（ECharts 柱+折线混合） ----------
+      let dailyDoneChart = null;
+      function updateDailyDoneChart() {
+        const el = document.getElementById("dailyDoneChart");
+        if (!el || !window.echarts) return;
+
+        const planned = {}, done = {};
+        DASH_DAYS.forEach(function (d) { planned[d] = 0; done[d] = 0; });
+        taskRows.forEach(function (r) {
+          const wd = (r.dayInfo && r.dayInfo.weekday) || null;
+          if (!wd || !(wd in planned)) return;
+          planned[wd] += 1;
+          if (r.done) done[wd] += 1;
+        });
+
+        if (!dailyDoneChart) {
+          dailyDoneChart = window.echarts.init(el);
+        }
+        const pVals = DASH_DAYS.map(function (d) { return planned[d]; });
+        const dVals = DASH_DAYS.map(function (d) { return done[d]; });
+        dailyDoneChart.setOption({
+          grid: { left: 30, right: 8, top: 30, bottom: 22 },
+          tooltip: {
+            trigger: "axis",
+            formatter: function (ps) {
+              const name = ps[0].name;
+              const p = planned[name] || 0, dd = done[name] || 0;
+              return name + "：计划 " + p + " 项 / 完成 " + dd + " 项";
+            },
+            textStyle: { fontSize: 11 },
+          },
+          legend: {
+            top: 0, left: "center", itemWidth: 12, itemHeight: 8,
+            textStyle: { fontSize: 10, color: "#475569" },
+            data: ["计划", "完成"],
+          },
+          xAxis: {
+            type: "category",
+            data: DASH_DAYS,
+            axisLabel: { fontSize: 10, interval: 0 },
+            axisTick: { show: false },
+          },
+          yAxis: {
+            type: "value",
+            minInterval: 1,
+            axisLabel: { fontSize: 9 },
+            splitLine: { lineStyle: { type: "dashed", color: "#e2e8f0" } },
+          },
+          series: [
+            {
+              name: "计划", type: "bar", barWidth: "45%", z: 1,
+              itemStyle: { color: "#cbd5e1", borderRadius: [3, 3, 0, 0] },
+              data: pVals,
+            },
+            {
+              name: "完成", type: "line", z: 2,
+              symbol: "circle", symbolSize: 7,
+              lineStyle: { width: 2, color: "#10b981" },
+              itemStyle: { color: "#10b981", borderColor: "#fff", borderWidth: 1 },
+              data: dVals,
+            },
+          ],
+        }, true);
+
+        const totalP = pVals.reduce(function (a, b) { return a + b; }, 0);
+        const totalD = dVals.reduce(function (a, b) { return a + b; }, 0);
+        const hint = document.getElementById("dailyDoneHint");
+        if (hint) hint.textContent = "本周完成 " + totalD + " / " + totalP + " 项";
       }
 
       // ---------- 任务3：手动调整 / 重置数据 ----------
@@ -2531,6 +2841,7 @@
       function refreshDashboard() {
         updateTodayRing();
         updateWeekBars();
+        updateDailyDoneChart();   // ★ ECharts：每日完成 / 计划任务量
       }
 
       // 课表保存后刷新看板课表卡片

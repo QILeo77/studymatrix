@@ -1,0 +1,24 @@
+# StudyMatrix / 遗忘刺客 Agent —— 一键部署
+# 用法：把 .env 里的 Key 填好后执行  docker compose up -d --build
+# 访问：http://<服务器IP>:5000
+services:
+  studymatrix:
+    build: .
+    container_name: studymatrix
+    restart: unless-stopped        # 断掉自动拉起（演示现场防翻车）
+    ports:
+      - "5000:5000"
+    environment:
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-sk-your-deepseek-api-key}
+      - TZ=Asia/Shanghai           # 主动提醒的早晚时段依赖北京时间
+    volumes:
+      - sm_data:/app/data          # SQLite 持久化（含 knowledge_point/plan_item/quiz_log）
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:5000/api/health',timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  sm_data:
