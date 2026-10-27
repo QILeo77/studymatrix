@@ -1908,3 +1908,88 @@ input.task-check:checked::after {
 }
 .ring-today-hint.manual { color: #b45309; font-weight: 700; }
 .progress-ring.manual { box-shadow: inset 0 0 0 2px #fde68a; }
+
+/* ---------- Tutor Agent 选择题卡（全选择题模式） ---------- */
+.quiz-card {
+  border: 1px solid #d1fae5;
+  background: #f0fdf9;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 10px 0;
+}
+
+.quiz-stem {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.75;
+  color: #065f46;
+  margin-bottom: 10px;
+}
+.quiz-stem p { margin: 0 0 6px; }
+.quiz-stem p:last-child { margin-bottom: 0; }
+
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quiz-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #065f46;
+  background: #ffffff;
+  border: 1px solid #a7f3d0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease,
+              transform .18s ease, box-shadow .18s ease;
+}
+.quiz-option:hover:not(:disabled) {
+  background: #d1fae5;
+  border-color: #10b981;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(16, 185, 129, .18);
+}
+.quiz-option:active:not(:disabled) { transform: translateY(0); }
+
+.quiz-option .quiz-key {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.quiz-option .quiz-text { flex: 1 1 auto; }
+
+.quiz-option.locked { cursor: default; opacity: .9; }
+
+/* 已选：中性灰，只表示「选过了」，不暗示对错 */
+.quiz-option.chosen {
+  border-color: #9ca3af;
+  background: #f3f4f6;
+  color: #6b7280;
+  box-shadow: inset 0 0 0 1px #d1d5db;
+}
+.quiz-option.chosen .quiz-key { background: #e5e7eb; color: #6b7280; }
+
+.quiz-reveal { margin-top: 10px; font-size: 13px; }
+.quiz-reveal.hidden { display: none; }
+.quiz-pending { color: #9ca3af; font-size: 12.5px; }
+
+@media (max-width: 640px) {
+  .quiz-card { padding: 12px; }
+  .quiz-option { padding: 9px 10px; font-size: 13px; }
+}

@@ -1,3 +1,4 @@
+# This is a demo for CodeArts contest
 """StudyMatrix - 智学矩阵
 
 基于 Flask 的 Web 服务入口：
@@ -204,25 +205,112 @@ def tutor_mode_of(rate):
     return "normal"
 
 
-# ---------- 任务5：出题专家强约束 ----------
+# ---------- 任务5：出题专家强约束（全选择题模式） ----------
+
+QUIZ_FORMAT_SPEC = (
+    "【输出格式 · 强约束】必须严格按以下纯文本 Markdown 格式输出，"
+    "不得添加表格、不得使用其他标记、不得省略任何标记行：\n"
+    "【题目】这里是题干\n"
+    "A. 选项内容\n"
+    "B. 选项内容\n"
+    "C. 选项内容\n"
+    "D. 选项内容\n"
+    "【答案】A\n"
+    "【解析】这里是解析\n"
+    "硬性要求：\n"
+    "1. 题型只能是单选题，必须且只能有 A/B/C/D 四个选项；\n"
+    "2. 【答案】后只允许写一个大写字母（A/B/C/D），不要附加任何文字说明；\n"
+    "3. 【解析】必须说明正确项为何正确、其余三项错在哪里，不要重复题干；\n"
+    "4. 若有多题，每题重复上述完整结构，题与题之间空一行；\n"
+    "5. 严禁把答案或解析混入选项区，严禁用表格形式输出题目；\n"
+    "6. 题干、选项、解析中的所有数学公式必须用 $...$（行内）或 $$...$$（独立公式）包裹，"
+    "禁止裸写 LaTeX 命令（如直接写 \\xi 而不加 $），否则前端无法渲染。"
+)
+
 
 def build_quiz_prompt(subject: str, weak: str = "", progress_data: str = "") -> str:
-    """出题测试 → 出题专家强约束提示词"""
+    """出题测试 → 出题专家强约束提示词（全选择题模式）"""
     subject = (subject or "综合").strip()
     prompt = (
-        f"你是一个出题专家。请根据用户选择的科目：{subject}，"
-        "结合用户当前的薄弱点，出一道针对性的选择题或简答题。\n"
+        f"你是一个出题专家（Tutor Agent）。请根据用户选择的科目：{subject}，"
+        "结合用户当前的薄弱点，出一道针对性的单选题（只出选择题，不要简答题）。\n"
         "要求：\n"
-        "1. 题目必须紧扣该科目知识点，难度适中，题干清晰\n"
-        "2. 选择题给出 4 个选项（A/B/C/D）；简答题给出答题要点\n"
-        "3. 先只出题，不要立刻给答案；在题目下方附一行「（作答后回复你的答案，我会点评）」\n"
-        "4. 如果用户回答后，请给予点评：指出对错、说明考点、给出改进建议"
+        "1. 题目必须紧扣该科目知识点，难度适中，题干清晰；\n"
+        "2. 四选一单选，三个干扰项要贴合常见错误思路，具有迷惑性；\n"
+        "3. 只出题，不要立刻给答案，也不要在题干里泄露答案；\n"
+        "4. 本次只出一道题。\n"
+        + QUIZ_FORMAT_SPEC
     )
     if weak:
         prompt += f"\n5. 用户自述的薄弱点：{weak}，出题时请重点覆盖"
     if progress_data:
         prompt += f"\n6. 用户打卡进度：{progress_data}（可参考其学习节奏）"
     return prompt
+
+
+def build_judge_prompt(quiz_ctx: dict) -> str:
+    """判题 → Tutor Agent 强约束提示词（答对夸奖 / 答错解析 + 2 道变式题）"""
+    stem = str(quiz_ctx.get("stem") or "").strip()
+    chosen = str(quiz_ctx.get("chosen") or "").strip().upper()[:1]
+    correct = str(quiz_ctx.get("answer") or "").strip().upper()[:1]
+    explain = str(quiz_ctx.get("explain") or "").strip()
+
+    opt_lines = []
+    for o in (quiz_ctx.get("options") or []):
+        if not isinstance(o, dict):
+            continue
+        k = str(o.get("key") or "").strip()
+        t = str(o.get("text") or "").strip()
+        if k and t:
+            opt_lines.append(f"{k}. {t}")
+
+    if not stem or not opt_lines:
+        return ""
+
+    prompt = (
+        "你是严格但鼓励式的判题老师（Tutor Agent）。下面是学生刚做的一道选择题，请判题。\n\n"
+        f"【原题】{stem}\n"
+        "【选项】\n" + "\n".join(opt_lines) + "\n"
+        f"【标准答案】{correct or '（未提供）'}\n"
+        f"【学生选择】{chosen or '（未提供）'}\n"
+    )
+    if explain:
+        prompt += f"【参考解析】{explain}\n"
+
+    prompt += (
+        "\n判题规则（严格执行）：\n"
+        "1. 请先独立求解本题，得出你自己确认的正确答案，再与【标准答案】对照；"
+        "若两者不一致，以你独立求解的结果为准（前端解析可能出错），并在解析开头用一句话说明差异；\n"
+        "2. 若学生答对：首行输出「✅ 答对了！」，给一句具体夸奖（点出他抓住的关键），"
+        "再用 2-3 句话简述解析（该选项为何正确、其他选项错在哪）；此情况不要出新的变式题；\n"
+        "3. 若学生答错：首行输出「❌ 答错了」，紧接着明确写出「正确答案：X」并用一句话点出"
+        "他所选项为何错，然后给出详细解析（分点说明错因与正确思路）；\n"
+        "4. 答错后【必须立刻】自动生成 2 道「同一知识点、同等难度」的变式题（举一反三），"
+        "变式题必须换情境 / 换数字 / 换问法，但考查同一知识点与同一套解题思路；\n"
+        + QUIZ_FORMAT_SPEC +
+        "\n注意：解析文字可以自由书写，但每一道变式题都必须严格遵守上述选择题格式。"
+    )
+    return prompt
+
+
+def judge_quiz(quiz_ctx: dict) -> str:
+    """调用大模型完成判题（非流式）；失败时返回可读的兜底文案"""
+    prompt = build_judge_prompt(quiz_ctx)
+    if not prompt:
+        return "⚠️ 题目信息不完整，无法判题。请重新出题后再作答。"
+    try:
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "请按规则判题。"},
+            ],
+            stream=False,
+            temperature=0.4,
+        )
+        return (resp.choices[0].message.content or "").strip() or "⚠️ 判题结果为空，请重试。"
+    except Exception as e:
+        return f"⚠️ 判题失败：{e}"
 
 
 def build_plan_slots_prompt(plan_slots: list) -> str:
@@ -346,6 +434,28 @@ def chat():
 
         if not DEEPSEEK_API_KEY:
             yield _sse("error", {"error": "服务端未配置 DEEPSEEK_API_KEY"})
+            return
+
+        # ---------- 0. Tutor Agent：判题模式（学生点击了选项按钮） ----------
+        # 前端把「题干 + 四个选项 + 标准答案 + 学生选择」作为 quiz_context 一并传回，
+        # 此分支直接进入判题链路，不再走 Agent Loop 的工具决策。
+        quiz_ctx = data.get("quiz_context") or {}
+        if isinstance(quiz_ctx, dict) and str(quiz_ctx.get("stem") or "").strip():
+            chosen = str(quiz_ctx.get("chosen") or "").strip().upper()[:1]
+            correct = str(quiz_ctx.get("answer") or "").strip().upper()[:1]
+            wrong = bool(chosen and correct and chosen != correct)
+            yield _sse("router", {
+                "route": "quiz_judge",
+                "agent": "Tutor Agent（判题 · 举一反三）",
+                "message": "Tutor Agent 正在判题" + ("，并生成 2 道同知识点变式题" if wrong else "") + "…",
+            })
+            reply = judge_quiz(quiz_ctx)
+            yield _sse("final", {
+                "reply": reply,
+                "intent": "quiz_judge",
+                "agent": "Tutor Agent",
+                "tool": "judge_quiz",
+            })
             return
 
         # ---------- 1. Router Agent：不再写死 if-else ----------

@@ -10,7 +10,7 @@
   <!-- Tailwind CSS (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- marked.js：Markdown 渲染 -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/static/marked.min.js" onerror="this.onerror=null;this.src='https://cdn.bootcdn.net/ajax/libs/marked/12.0.2/marked.min.js'"></script>
 
   <!-- KaTeX：数学公式（LaTeX）渲染 —— CSS + 核心 + 自动渲染扩展（国内可达 CDN） -->
   <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/KaTeX/0.16.9/katex.min.css" />
@@ -520,10 +520,243 @@
           .replace(/\\\]/g, "\\\\]");
       }
 
+      // 清洗竖线表格：GFM 规范要求表格块前后必须有空行，否则整块会被当成普通段落。
+      // 这里以「表格块」为单位处理：块前无空行补一个，块后缺空行也补一个。
+      function normalizePipeTables(text) {
+        const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+        function isTableRow(line) {
+          const t = line.trim();
+          if (!t) return false;
+          const pipes = (t.match(/\|/g) || []).length;
+          if (pipes === 0) return false;
+          if (pipes >= 2) return true;
+          return t.charAt(0) === "|" || t.charAt(t.length - 1) === "|";
+        }
+        const out = [];
+        let prevTable = false;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const cur = isTableRow(line);
+          if (cur && !prevTable && out.length > 0 && out[out.length - 1].trim() !== "") {
+            out.push("");   // 表格块前有空行 → 才能触发 marked 的 table 规则
+          }
+          if (!cur && prevTable && out.length > 0 && out[out.length - 1].trim() !== "") {
+            out.push("");   // 表格块后补空行 → 避免后续段落被吞
+          }
+          out.push(line);
+          prevTable = cur;
+        }
+        return out.join("\n");
+      }
+
+      // ---------- 选择题组件（Tutor Agent 全选择题模式） ----------
+      // 行首 Markdown 修饰剥离：**加粗**、- 列表、> 引用、# 标题、空格
+      function stripMd(line) {
+        return String(line || "")
+          .replace(/^\s*(?:[-*+>#]+\s*)+/, "")
+          .replace(/\*\*/g, "")
+          .replace(/__/g, "")
+          .trim();
+      }
+
+      // 选项行：A. / A、 / A． / A： / A) / （A） / (A)
+      function parseOptionLine(t) {
+        let m = t.match(/^[（(]([A-D])[)）]\s*(.+)$/);
+        if (m) return { key: m[1], text: m[2].trim() };
+        m = t.match(/^([A-D])\s*[.、．:：)）]\s*(.+)$/);
+        if (m) return { key: m[1], text: m[2].trim() };
+        return null;
+      }
+
+      function encodeQuiz(obj) {
+        try {
+          return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+        } catch (e) { return ""; }
+      }
+
+      function decodeQuiz(s) {
+        try {
+          return JSON.parse(decodeURIComponent(escape(atob(s))));
+        } catch (e) { return null; }
+      }
+
+      // 按行状态机解析：题干 / A-D 选项 / 答案 / 解析，整个块替换为占位 div
+      function splitQuizBlocks(text) {
+        const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+        const out = [];
+        const blocks = [];
+        let cur = null;
+        let raw = [];
+
+        function flush() {
+          if (cur && cur.options.length >= 4) {   // 只有完整的 A/B/C/D 才渲染成卡片
+            blocks.push(cur);
+            if (out.length && out[out.length - 1].trim() !== "") out.push("");
+            out.push('<div class="quiz-holder" data-quiz="' + encodeQuiz(cur) + '"></div>');
+            out.push("");
+          } else if (raw.length) {
+            out.push(raw.join("\n"));   // 结构不完整 → 原样输出，不误伤正文
+          }
+          cur = null;
+          raw = [];
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const rawT = line.trim();
+          const probe = stripMd(line);      // 去掉 ** / - / > / # 后的识别用文本
+          const isSep = /^(-{3,}|\*{3,}|_{3,})$/.test(rawT);
+
+          if (probe.indexOf("【题目】") === 0) {
+            flush();
+            cur = { stem: probe.slice(4).trim(), options: [], answer: "",
+                    explain: "", inExplain: false };
+            raw = [line];
+            continue;
+          }
+          if (!cur) { out.push(line); continue; }
+
+          raw.push(line);
+          if (isSep) continue;              // --- / *** 分隔线不进入题干或选项
+
+          // 选项按 A→B→C→D 顺序识别，避免题干中的小问被误判
+          const opt = parseOptionLine(probe);
+          if (opt && !cur.answer && !cur.inExplain && cur.options.length < 4
+              && opt.key === String.fromCharCode(65 + cur.options.length)) {
+            cur.options.push(opt);
+            continue;
+          }
+
+          if (probe.indexOf("【答案】") === 0) {
+            const ans = probe.slice(4).match(/[A-D]/);
+            cur.answer = ans ? ans[0] : "";
+            continue;
+          }
+          if (probe.indexOf("【解析】") === 0) {
+            cur.explain = probe.slice(4).trim();
+            cur.inExplain = true;
+            continue;
+          }
+
+          if (cur.inExplain) {
+            cur.explain += (cur.explain ? "\n" : "") + line;   // 解析可多行、含列表与公式
+            continue;
+          }
+          if (cur.options.length === 0) {
+            cur.stem = cur.stem ? cur.stem + "\n" + line : line;   // 题干多行保留空行
+          }
+          // 选项之后、答案之前的提示语（如「先别急着看答案」）直接丢弃
+        }
+        flush();
+        return { markdown: out.join("\n"), blocks: blocks };
+      }
+
+      function protectQuizBlocks(text) {
+        const r = splitQuizBlocks(text);
+        return r.blocks.length ? r.markdown : String(text || "");
+      }
+
+      // 兜底：整段是纯公式但没写 $ 定界符时，自动补 $...$ 交给 KaTeX
+      function wrapBareLatex(t) {
+        const s = String(t || "").trim();
+        if (!s) return "";
+        if (/\$|\\\(|\\\[/.test(s)) return s;          // 已有定界符
+        if (!/\\[a-zA-Z]+/.test(s)) return s;          // 不含 LaTeX 命令
+        if (/[\u4e00-\u9fa5]/.test(s)) return s;       // 含中文 → 不整体包成公式
+        return "$" + s + "$";
+      }
+
+      // 渲染后：把占位 div 换成真正的选择题卡，并立刻排版题干与选项里的公式
+      function renderQuizWidgets(container) {
+        if (!container) return;
+        Array.from(container.querySelectorAll(".quiz-holder")).forEach(function (holder) {
+          const q = decodeQuiz(holder.getAttribute("data-quiz") || "");
+          if (!q || !q.options || !q.options.length) { holder.remove(); return; }
+          const card = buildQuizCard(q);
+          holder.parentNode.replaceChild(card, holder);
+          typesetMath(card);   // ★ 题干 + A/B/C/D 选项一次性渲染 KaTeX
+        });
+      }
+
+      function buildQuizCard(q) {
+        const card = document.createElement("div");
+        card.className = "quiz-card";
+        card.dataset.answer = String(q.answer || "").toUpperCase();
+        card.dataset.stem = q.stem || "";
+        card.dataset.explain = q.explain || "";
+        card.dataset.options = JSON.stringify(q.options || []);
+
+        const stem = document.createElement("div");
+        stem.className = "quiz-stem";
+        stem.innerHTML = renderMarkdown(q.stem || "");
+        card.appendChild(stem);
+
+        const opts = document.createElement("div");
+        opts.className = "quiz-options";
+        (q.options || []).forEach(function (o) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "quiz-option";
+          btn.dataset.key = o.key;
+          btn.innerHTML =
+            '<span class="quiz-key">' + escapeHtml(o.key) + "</span>" +
+            '<span class="quiz-text">' + escapeHtml(wrapBareLatex(o.text)) + "</span>";
+          btn.addEventListener("click", function () { submitQuizAnswer(card, o.key); });
+          opts.appendChild(btn);
+        });
+        card.appendChild(opts);
+
+        const reveal = document.createElement("div");
+        reveal.className = "quiz-reveal hidden";
+        card.appendChild(reveal);
+        return card;
+      }
+
+      // 点击选项：只做「标记已选 + 发送判题请求」，对错完全交给大模型
+      function submitQuizAnswer(card, key) {
+        if (!card || card.dataset.submitted === "1") return;
+        if (typeof busy !== "undefined" && busy) return;
+        card.dataset.submitted = "1";
+
+        // 只表达「这一项被选中」，不做任何对错判定、不显示正确答案
+        Array.from(card.querySelectorAll(".quiz-option")).forEach(function (b) {
+          b.disabled = true;
+          b.classList.add("locked");
+          if (b.dataset.key === key) b.classList.add("chosen");
+        });
+
+        const reveal = card.querySelector(".quiz-reveal");
+        if (reveal) {
+          reveal.classList.remove("hidden");
+          reveal.innerHTML = '<div class="quiz-pending">已提交，AI 正在判题…</div>';
+        }
+
+        let options = [];
+        try { options = JSON.parse(card.dataset.options || "[]"); } catch (e) { options = []; }
+
+        sendMessage("我选择了 " + key + "，请帮我判题。", {
+          quiz_context: {
+            stem: card.dataset.stem || "",
+            options: options,
+            answer: String(card.dataset.answer || "").toUpperCase(),   // 仅作参考，判定权在后端
+            explain: card.dataset.explain || "",
+            chosen: key,
+          },
+        });
+      }
+
       function renderMarkdown(text) {
-        const safeText = protectMathDelimiters(text);
+        // ★ 先切出选择题块（此时仍是原始文本），再对剩余正文做公式保护，
+        //   避免题干 / 选项里的 \( \) 被 protectMathDelimiters 二次转义导致 KaTeX 失效。
+        const quiz = splitQuizBlocks(text);
+        const body = quiz.blocks.length ? quiz.markdown : String(text || "");
+        const safeText = normalizePipeTables(protectMathDelimiters(body));
         if (window.marked) {
-          return marked.parse(safeText);
+          try {
+            return marked.parse(safeText, { gfm: true });
+          } catch (e) {
+            console.error("[StudyMatrix] Markdown 解析失败:", e);
+          }
         }
         return escapeHtml(safeText).replace(/\n/g, "<br>");
       }
@@ -658,37 +891,55 @@
         } catch (e) { /* 忽略 */ }
       }
 
-      // ---- 顶部总进度看板：已完成任务数 / 任务总数 ----
-      function updateProgressBoard() {
-        const total = taskRows.length;
-        const done = taskRows.filter(function (r) { return r.done; }).length;
-        const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-        const pEl = document.getElementById("progressPercent");
-        const fEl = document.getElementById("progressFill");
-        if (pEl) pEl.textContent = pct + "%";
-        if (fEl) fEl.style.width = pct + "%";
+      // ---- 统一打卡统计：直接遍历页面上的 checkbox（跨表格 / 跨历史会话都算） ----
+      function collectCheckStats() {
+        const boxes = Array.from(messages.querySelectorAll("input.task-check"));
+        let done = 0;
+        boxes.forEach(function (cb) { if (cb.checked) done += 1; });
+        const total = boxes.length;
+        return { done: done, total: total,
+                 pct: total === 0 ? 0 : Math.round((done / total) * 100) };
       }
 
-      // ---- 每日进度面板刷新（表格上方）----
-      function updateDayPanels() {
-        // 按 day 分组统计
-        const groups = {};
-        taskRows.forEach(function (r) {
-          if (!r.day) return;
-          if (!groups[r.day]) groups[r.day] = { done: 0, total: 0 };
-          groups[r.day].total += 1;
-          if (r.done) groups[r.day].done += 1;
+      // 今日统计：只算 data-today="1" 的行
+      function collectTodayStats() {
+        const rows = Array.from(messages.querySelectorAll('tr[data-today="1"]'));
+        let done = 0;
+        rows.forEach(function (tr) {
+          const cb = tr.querySelector("input.task-check");
+          if (cb && cb.checked) done += 1;
         });
-        const days = Object.keys(groups);
-        const isSingleDay = days.length === 1;
+        return { done: done, total: rows.length };
+      }
 
-        // 更新每个面板
-        taskRows.some(function (r) {
-          const panel = r.panelEl;   // 任一行引用所在面板
-          if (!panel) return false;
-          const list = isSingleDay ? days : days;
-          renderDayPanel(panel, groups, isSingleDay);
-          return true;
+      // ---- 顶部总进度看板：已完成任务数 / 任务总数 ----
+      function updateProgressBoard() {
+        const s = collectCheckStats();
+        const pEl = document.getElementById("progressPercent");
+        const fEl = document.getElementById("progressFill");
+        if (pEl) pEl.textContent = s.pct + "%";
+        if (fEl) fEl.style.width = s.pct + "%";
+      }
+
+      // ---- 每日进度面板刷新：每张表格各有一个面板，按真实 DOM 状态统计 ----
+      function updateDayPanels() {
+        const tables = Array.from(messages.querySelectorAll("table"));
+        tables.forEach(function (table) {
+          const panel = table._dayPanel;
+          if (!panel) return;
+          const groups = {};
+          Array.from(table.querySelectorAll("tbody tr")).forEach(function (tr) {
+            const cell = tr.querySelector("td.task-check-cell");
+            const day = (cell && cell.title) ? cell.title : "";
+            if (!day) return;
+            if (!groups[day]) groups[day] = { done: 0, total: 0 };
+            groups[day].total += 1;
+            const cb = tr.querySelector("input.task-check");
+            if (cb && cb.checked) groups[day].done += 1;
+          });
+          const days = Object.keys(groups);
+          if (days.length === 0) { panel.innerHTML = ""; return; }
+          renderDayPanel(panel, groups, days.length === 1);
         });
       }
 
@@ -723,102 +974,119 @@
         });
       }
 
-      // ---- 核心：为计划表每行插入 checkbox，绑定单条打卡 ----
+      // ---- 核心：DOM 后处理注入打卡 checkbox（不依赖文本正则） ----
+      // 稳定 key：表格序号 + 行序号 + 行文本 hash，刷新后仍能命中同一条任务
+      function hashText(s) {
+        let h = 5381;
+        const str = String(s || "").replace(/\s+/g, " ").trim();
+        for (let i = 0; i < str.length; i++) {
+          h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+        }
+        return h.toString(36);
+      }
+
       function attachCheckButtons(bubbleEl, restore) {
         if (!bubbleEl) return;
-        const tables = bubbleEl.querySelectorAll("table");
+        const tables = Array.from(bubbleEl.querySelectorAll("table"));
         if (tables.length === 0) return;
 
-        // 只处理最后一个表格（最新计划表）
-        const table = tables[tables.length - 1];
-        const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
-        if (bodyRows.length === 0) return;
-
-        // 1. 状态：restore 从 localStorage 恢复（任务内容为 Key）；新计划重置
         const sid = currentSessionId || "";
         const state = restore ? loadTaskCheck(sid) : {};
-
-        // 2. 表头最左插入「打卡」列
-        const headerRow = table.querySelector("thead tr") || table.querySelector("tr");
-        if (headerRow && !headerRow.querySelector(".task-check-cell")) {
-          const th = document.createElement("th");
-          th.textContent = "打卡";
-          th.className = "task-check-cell";
-          headerRow.insertBefore(th, headerRow.firstChild);
-        }
-
-        // 3. 每行最左插入 checkbox（这一列顺便显示所属日期）
         taskRows = [];
-        bodyRows.forEach(function (tr) {
-          const tds = tr.querySelectorAll("td");
-          const firstCell = tds[0];                        // 原第一列：日期
-          const timeCell = tds[1];                         // 第二列：时间段
-          const taskCell = tds[2] || tr.lastElementChild;  // 第三列：任务内容
-          const day = firstCell ? extractDay(firstCell.textContent) : null;
-          const dayInfo = parseDayInfo(firstCell ? firstCell.textContent : "");   // ★ 任务1
-          const taskKey = (taskCell ? taskCell.textContent : "").trim().slice(0, 50);  // 任务内容为 Key
-          const min = extractDurationMin(taskCell ? taskCell.textContent : "",     // ★ 任务2
-                                         timeCell ? timeCell.textContent : "");
 
-          const td = document.createElement("td");
-          td.className = "task-check-cell";
-          if (day) td.title = day;
+        tables.forEach(function (table, tableIdx) {
+          if (table.dataset.checkInjected === "1") return;   // 幂等：已注入则跳过
+          const bodyRows = Array.from(table.querySelectorAll("tbody tr"));
+          if (bodyRows.length === 0) return;
 
-          const cb = document.createElement("input");
-          cb.type = "checkbox";
-          cb.className = "task-check";
-          cb.checked = !!state[taskKey];
-
-          cb.addEventListener("change", function () {
-            state[taskKey] = cb.checked;                    // 单条任务状态
-            saveTaskCheck(currentSessionId || "", state);  // 立即持久化
-            if (cb.checked) markCheckinToday();            // ★ 记录最近打卡日期（连续未打卡判定）
-            reportCheckin();                               // ★ Memory：上报打卡情况
-            const rec = taskRows.find(function (r) { return r.tr === tr; });
-            if (rec) rec.done = cb.checked;
-            tr.classList.toggle("done-row", cb.checked);   // 删除线 + 变灰 + 浅灰背景
-            updateDayPanels();                              // 每日进度联动
-            updateProgressBoard();                          // 顶部总进度
-            if (typeof refreshDashboard === "function") refreshDashboard();  // ★ 右侧看板联动
-          });
-
-          td.appendChild(cb);
-          // 日期小标签（同组多行只显示第一行的日期，避免重复）
-          if (day) {
-            const prevTr = tr.previousElementSibling;
-            const prevDay = prevTr && prevTr.querySelector("td")
-              ? extractDay(prevTr.querySelector("td").textContent) : null;
-            if (prevDay !== day) {
-              const tag = document.createElement("div");
-              tag.className = "task-day-tag";
-              tag.textContent = day;
-              td.appendChild(tag);
-            }
+          // 1. 表头最左插入「打卡」列
+          const headerRow = table.querySelector("thead tr") || (table.rows && table.rows[0]);
+          if (headerRow && !headerRow.querySelector(".task-check-cell")) {
+            const th = document.createElement("th");
+            th.textContent = "打卡";
+            th.className = "task-check-cell";
+            headerRow.insertBefore(th, headerRow.firstChild);
           }
 
-          tr.insertBefore(td, tr.firstChild);
-          tr.classList.toggle("done-row", cb.checked);      // 恢复时立即应用划线
-          taskRows.push({ tr: tr, day: day, dayInfo: dayInfo, taskKey: taskKey,
-                          done: cb.checked, min: min, panelEl: null });
+          // 2. 遍历 tbody 每一行，最前面插入 checkbox
+          bodyRows.forEach(function (tr, rowIdx) {
+            if (tr.querySelector("input.task-check")) return;
+            const cells = Array.from(tr.querySelectorAll("td"));
+            if (cells.length === 0) return;
+
+            const rowText = cells.map(function (td) { return td.textContent.trim(); }).join(" | ");
+            const dateCell = cells[0];
+            const timeCell = cells.length >= 2 ? cells[1] : null;
+            const taskCell = cells.length >= 3 ? cells[cells.length - 1] : cells[0];
+
+            const day = extractDay(dateCell.textContent);
+            const dayInfo = parseDayInfo(dateCell.textContent);
+            const min = extractDurationMin(taskCell ? taskCell.textContent : "",
+                                           timeCell ? timeCell.textContent : "");
+            const taskKey = "t" + tableIdx + "r" + rowIdx + "-" + hashText(rowText);
+
+            const td = document.createElement("td");
+            td.className = "task-check-cell";
+            if (day) td.title = day;
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.className = "task-check";
+            cb.checked = !!state[taskKey];
+            cb.setAttribute("aria-label",
+              "打卡：" + (taskCell ? taskCell.textContent.trim().slice(0, 24) : "任务"));
+
+            td.appendChild(cb);
+            if (day) {
+              const prevTr = tr.previousElementSibling;
+              const prevDay = prevTr && prevTr.querySelector("td")
+                ? extractDay(prevTr.querySelector("td").textContent) : null;
+              if (prevDay !== day) {
+                const tag = document.createElement("div");
+                tag.className = "task-day-tag";
+                tag.textContent = day;
+                td.appendChild(tag);
+              }
+            }
+            tr.insertBefore(td, tr.firstChild);
+
+            // 3. 行元数据：看板统计 / 刷新恢复 / 时长柱统一读这里
+            tr.dataset.taskKey = taskKey;
+            tr.dataset.min = String(min);
+            tr.dataset.weekday = (dayInfo && dayInfo.weekday) || "";
+            tr.dataset.today = (dayInfo && dayInfo.isToday) ? "1" : "0";
+            tr.classList.toggle("done-row", cb.checked);   // 恢复时立即划线置灰
+
+            // 4. 打卡联动：划线 → 存盘 → 面板 → 顶部进度 → 右侧看板
+            cb.addEventListener("change", function () {
+              tr.classList.toggle("done-row", cb.checked);
+              state[taskKey] = cb.checked;
+              saveTaskCheck(sid, state);                    // 勾选即落盘
+              if (cb.checked) markCheckinToday();
+              reportCheckin();
+              updateDayPanels();
+              updateProgressBoard();
+              if (typeof refreshDashboard === "function") refreshDashboard();
+            });
+
+            taskRows.push({ tr: tr, day: day, dayInfo: dayInfo, taskKey: taskKey,
+                            done: cb.checked, min: min });
+          });
+
+          table.dataset.checkInjected = "1";
+
+          // 5. 表格上方生成每日进度面板（只建一次）
+          let panel = table.previousElementSibling;
+          if (!panel || !panel.classList || !panel.classList.contains("day-progress-panel")) {
+            panel = document.createElement("div");
+            panel.className = "day-progress-panel";
+            table.parentNode.insertBefore(panel, table);
+          }
+          table._dayPanel = panel;
         });
 
-        // 4. 表格上方生成每日进度面板
-        const panel = document.createElement("div");
-        panel.className = "day-progress-panel";
-        table.parentNode.insertBefore(panel, table);
-        taskRows.forEach(function (r) { r.panelEl = panel; });
-
-        // 5. 初始渲染（含恢复状态）
-        const groups0 = {};
-        taskRows.forEach(function (r) {
-          if (!r.day) return;
-          if (!groups0[r.day]) groups0[r.day] = { done: 0, total: 0 };
-          groups0[r.day].total += 1;
-          if (r.done) groups0[r.day].done += 1;
-        });
-        renderDayPanel(panel, groups0, Object.keys(groups0).length === 1);
+        updateDayPanels();
         updateProgressBoard();
-        // 新计划渲染后同步看板（早期加载阶段看板可能尚未就绪 → 容错跳过）
         try { if (typeof refreshDashboard === "function") refreshDashboard(); } catch (e) {}
       }
 
@@ -827,6 +1095,7 @@
         row.className = "flex gap-3";
         row.innerHTML = '<div class="ai-avatar">AI</div><div class="ai-bubble md-body">' + html + "</div>";
         messages.appendChild(row);
+        renderQuizWidgets(row.querySelector(".ai-bubble"));   // ★ 选择题卡（题干 + A/B/C/D 绿色按钮）
         typesetMath(row.querySelector(".ai-bubble"));   // ★ 渲染 LaTeX 数学公式
         // 渲染后为最新计划表每行插入 checkbox（restoreCheck=true 时从 localStorage 恢复）
         attachCheckButtons(row.querySelector(".ai-bubble"), !!restoreCheck);
@@ -1537,11 +1806,14 @@
       // 格式如：当前已完成：周一全部任务、周二2/3的任务、周三暂未开始。
       function getProgressData() {
         const groups = {};
-        taskRows.forEach(function (r) {
-          if (!r.day) return;
-          if (!groups[r.day]) groups[r.day] = { done: 0, total: 0 };
-          groups[r.day].total += 1;
-          if (r.done) groups[r.day].done += 1;
+        Array.from(messages.querySelectorAll("tbody tr")).forEach(function (tr) {
+          const cell = tr.querySelector("td.task-check-cell");
+          const day = (cell && cell.title) ? cell.title : "";
+          if (!day) return;                                  // 仅统计带日期的计划行
+          if (!groups[day]) groups[day] = { done: 0, total: 0 };
+          groups[day].total += 1;
+          const cb = tr.querySelector("input.task-check");
+          if (cb && cb.checked) groups[day].done += 1;
         });
         const days = Object.keys(groups);
         if (days.length === 0) return "";
@@ -1608,6 +1880,9 @@
           }
           if (extra && extra.plan_slots) {
             payload.plan_slots = extra.plan_slots;       // 规划弹窗：勾选的时段列表
+          }
+          if (extra && extra.quiz_context) {
+            payload.quiz_context = extra.quiz_context;   // ★ 判题：题干 / 选项 / 标准答案 / 学生选择
           }
           const resp = await fetch(API_URL, {
             method: "POST",
@@ -2039,9 +2314,9 @@
 
       function updateTodayRing() {
         const ov = loadDashOverride();
-        const rows = todayTaskRows();
-        const total = rows.length;
-        const done = rows.filter(function (r) { return r.done; }).length;
+        const st = collectTodayStats();          // 直接读 DOM 上的今日打卡状态
+        const total = st.total;
+        const done = st.done;
 
         let pct = total === 0 ? 0 : Math.round((done / total) * 100);
         let doneShown = done, totalShown = total, manual = false;
@@ -2080,11 +2355,13 @@
 
         const hours = {};
         DASH_DAYS.forEach(function (d) { hours[d] = 0; });
-        taskRows.forEach(function (r) {
-          if (!r.done) return;                                  // 只统计已勾选任务
-          const wd = (r.dayInfo && r.dayInfo.weekday) || null;
-          if (!wd || !(wd in hours)) return;                    // 与真实周历对齐
-          hours[wd] += (r.min || 90) / 60;
+        Array.from(messages.querySelectorAll("tr[data-min]")).forEach(function (tr) {
+          const cb = tr.querySelector("input.task-check");
+          if (!cb || !cb.checked) return;                        // 只统计已勾选任务
+          const wd = tr.dataset.weekday || "";
+          if (!wd || !(wd in hours)) return;                      // 与真实周历对齐
+          const min = parseInt(tr.dataset.min, 10);
+          hours[wd] += (isNaN(min) ? 90 : min) / 60;
         });
 
         const ov = loadDashOverride();
@@ -2177,8 +2454,11 @@
       // ---------- 任务2：每 1 分钟检查打卡状态变化，动态刷新图表 ----------
       let dashSig = "";
       function dashboardSignature() {
-        const rows = taskRows.map(function (r) { return (r.done ? "1" : "0") + (r.min || 0); }).join("|");
-        return rows + "#" + todayISO() + "#" + JSON.stringify(loadDashOverride());
+        const sig = Array.from(messages.querySelectorAll("input.task-check")).map(function (cb) {
+          const tr = cb.closest("tr");
+          return (cb.checked ? "1" : "0") + (tr ? (tr.dataset.min || 0) : 0);
+        }).join("|");
+        return sig + "#" + todayISO() + "#" + JSON.stringify(loadDashOverride());
       }
       function dashboardTick() {
         const sig = dashboardSignature();
@@ -2301,20 +2581,19 @@
       // 今日未完成任务数（用于「任务积累未完成」判定）
       function getUndoneCount() {
         try {
-          if (Array.isArray(taskRows) && taskRows.length) {
-            return taskRows.filter(function (r) { return !r.done; }).length;
-          }
-        } catch (e) { /* 忽略 */ }
-        return 0;
+          const s = collectCheckStats();
+          return Math.max(0, s.total - s.done);
+        } catch (e) {
+          return 0;
+        }
       }
 
-      // 本周计划完成率（督学反馈）：基于最新计划表的打卡状态
+      // 本周计划完成率（督学反馈）：基于页面所有打卡 checkbox 的实时状态
       function getWeekCompletion() {
         try {
-          const total = Array.isArray(taskRows) ? taskRows.length : 0;
-          if (!total) return { done: 0, total: 0, rate: null, text: "" };
-          const done = taskRows.filter(function (r) { return r.done; }).length;
-          return { done: done, total: total, rate: done / total, text: done + "/" + total };
+          const s = collectCheckStats();
+          if (!s.total) return { done: 0, total: 0, rate: null, text: "" };
+          return { done: s.done, total: s.total, rate: s.done / s.total, text: s.done + "/" + s.total };
         } catch (e) {
           return { done: 0, total: 0, rate: null, text: "" };
         }
