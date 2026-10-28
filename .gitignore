@@ -30,3 +30,10 @@ data/app.db-wal
 
 # 工具/编辑器
 .opencode/
+.codeartsdoer/
+
+# 运行时审计轨迹（每次对话自动生成，不入库）
+data/agent_traces/
+
+# 比赛录屏（体积大，随材料单独打包，不进 Git）
+codearts_evidence/*.mp4
